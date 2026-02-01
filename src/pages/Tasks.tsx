@@ -1,0 +1,972 @@
+﻿import { useEffect, useMemo, useState } from 'react';
+import {
+  CheckCircle2,
+  Clock3,
+  Flame,
+  ListChecks,
+  MessageSquare,
+  Plus,
+  User,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
+import { AppLayout } from '@/components/layout/AppLayout';
+import { Modal } from '@/components/ui/Modal';
+import { useCRMStore, Task, TaskComment } from '@/store/crmStore';
+import { useAuthStore } from '@/store/authStore';
+import { cn } from '@/lib/utils';
+
+const priorityLabels: Record<Task['priority'], string> = {
+  high: 'Высокий',
+  medium: 'Средний',
+  low: 'Низкий',
+};
+
+const priorityStyles: Record<Task['priority'], string> = {
+  high: 'bg-red-500/10 text-red-600 dark:text-red-400',
+  medium: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  low: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+};
+
+const statusLabels = {
+  open: 'Активная',
+  in_progress: 'В работе',
+  completed: 'Завершена',
+  overdue: 'Просрочена',
+};
+
+const statusStyles: Record<keyof typeof statusLabels, string> = {
+  open: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+  in_progress: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  completed: 'bg-green-500/10 text-green-600 dark:text-green-400',
+  overdue: 'bg-red-500/10 text-red-600 dark:text-red-400',
+};
+
+const toDate = (value?: Date | string | null) => (value ? new Date(value) : null);
+
+const formatDate = (value?: Date | string | null) => {
+  const date = toDate(value);
+  return date ? date.toLocaleDateString('ru-RU') : '—';
+};
+
+const formatDateTime = (value?: Date | string | null) => {
+  const date = toDate(value);
+  return date
+    ? date.toLocaleString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '—';
+};
+
+const toInputDate = (value?: Date | string | null) => {
+  const date = toDate(value);
+  return date ? date.toISOString().slice(0, 10) : '';
+};
+
+const createTempId = () => Math.random().toString(36).slice(2, 10);
+
+const getInitials = (name?: string) => {
+  if (!name) return '—';
+  const trimmed = name.trim();
+  if (!trimmed) return '—';
+  const parts = trimmed.split(/\s+/);
+  const first = parts[0]?.[0] ?? '';
+  const second = parts.length > 1 ? parts[1]?.[0] ?? '' : '';
+  return (first + second || trimmed[0]).toUpperCase();
+};
+
+const getDisplayStatus = (task: Task): keyof typeof statusLabels => {
+  if (task.status === 'completed') return 'completed';
+  const due = toDate(task.dueDate);
+  if (due && due.getTime() < Date.now()) return 'overdue';
+  return task.status === 'in_progress' ? 'in_progress' : 'open';
+};
+
+export default function Tasks() {
+  const { tasks, employees, addTask, updateTask, deleteTask } = useCRMStore();
+  const { role } = useAuthStore();
+
+  const isDirector = role === 'director';
+  const adminId = useMemo(
+    () => employees.find((emp) => emp.role === 'admin')?.id || employees[0]?.id || '1',
+    [employees]
+  );
+  const managerId = useMemo(
+    () => employees.find((emp) => emp.role === 'manager')?.id || employees[0]?.id || '2',
+    [employees]
+  );
+  const currentUserId = isDirector ? adminId : managerId;
+
+  const [leftFilter, setLeftFilter] = useState<'all' | 'mine' | 'active' | 'completed'>(
+    isDirector ? 'all' : 'mine'
+  );
+  const [priorityFilter, setPriorityFilter] = useState<'all' | Task['priority']>('all');
+  const [urgentOnly, setUrgentOnly] = useState(false);
+
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [taskForm, setTaskForm] = useState({
+    title: '',
+    description: '',
+    assigneeId: currentUserId,
+    priority: 'medium' as Task['priority'],
+    isUrgent: false,
+    hasDeadline: true,
+    dueDate: '',
+  });
+
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [commentToDeleteId, setCommentToDeleteId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [detailDraft, setDetailDraft] = useState({
+    title: '',
+    description: '',
+    assigneeId: currentUserId,
+    priority: 'medium' as Task['priority'],
+    isUrgent: false,
+    hasDeadline: true,
+    dueDate: '',
+    status: 'open' as Task['status'],
+    rewardAmount: '' as string | number,
+    penaltyAmount: '' as string | number,
+  });
+  const [newCommentText, setNewCommentText] = useState('');
+
+  useEffect(() => {
+    setLeftFilter(isDirector ? 'all' : 'mine');
+  }, [isDirector]);
+
+  const roleScopedTasks = useMemo(
+    () => (isDirector ? tasks : tasks.filter((task) => task.assigneeId === currentUserId)),
+    [tasks, isDirector, currentUserId]
+  );
+
+  const assignableEmployees = useMemo(
+    () =>
+      employees.filter((employee) =>
+        isDirector ? employee.role === 'admin' || employee.role === 'manager' : employee.role === 'manager'
+      ),
+    [employees, isDirector]
+  );
+
+  const counts = useMemo(
+    () => ({
+      all: roleScopedTasks.length,
+      mine: roleScopedTasks.filter((task) => task.assigneeId === currentUserId).length,
+      active: roleScopedTasks.filter((task) => task.status !== 'completed').length,
+      completed: roleScopedTasks.filter((task) => task.status === 'completed').length,
+    }),
+    [roleScopedTasks, currentUserId]
+  );
+
+  const filteredTasks = useMemo(() => {
+    let list = [...roleScopedTasks];
+
+    if (leftFilter === 'mine') {
+      list = list.filter((task) => task.assigneeId === currentUserId);
+    }
+    if (leftFilter === 'active') {
+      list = list.filter((task) => task.status !== 'completed');
+    }
+    if (leftFilter === 'completed') {
+      list = list.filter((task) => task.status === 'completed');
+    }
+
+    if (priorityFilter !== 'all') {
+      list = list.filter((task) => task.priority === priorityFilter);
+    }
+
+    if (urgentOnly) {
+      list = list.filter((task) => task.isUrgent);
+    }
+
+    return list;
+  }, [roleScopedTasks, leftFilter, currentUserId, priorityFilter, urgentOnly]);
+
+  const sortedTasks = useMemo(() => {
+    const priorityRank = { high: 3, medium: 2, low: 1 };
+    return [...filteredTasks].sort((a, b) => {
+      if (a.isUrgent !== b.isUrgent) return a.isUrgent ? -1 : 1;
+      const priorityDiff = priorityRank[b.priority] - priorityRank[a.priority];
+      if (priorityDiff !== 0) return priorityDiff;
+      const aDue = toDate(a.dueDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const bDue = toDate(b.dueDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      if (aDue !== bDue) return aDue - bDue;
+      return toDate(b.createdAt)?.getTime() - toDate(a.createdAt)?.getTime();
+    });
+  }, [filteredTasks]);
+
+  const selectedTask = useMemo(
+    () => (selectedTaskId ? tasks.find((task) => task.id === selectedTaskId) || null : null),
+    [tasks, selectedTaskId]
+  );
+
+  useEffect(() => {
+    if (!selectedTask) return;
+    setDetailDraft({
+      title: selectedTask.title,
+      description: selectedTask.description,
+      assigneeId: selectedTask.assigneeId,
+      priority: selectedTask.priority,
+      isUrgent: selectedTask.isUrgent ?? false,
+      hasDeadline: Boolean(selectedTask.dueDate),
+      dueDate: toInputDate(selectedTask.dueDate),
+      status: selectedTask.status,
+      rewardAmount: selectedTask.rewardAmount ?? '',
+      penaltyAmount: selectedTask.penaltyAmount ?? '',
+    });
+    setNewCommentText('');
+  }, [selectedTask?.id]);
+
+  useEffect(() => {
+    if (isCommentsOpen && !selectedTask) {
+      setIsCommentsOpen(false);
+    }
+  }, [isCommentsOpen, selectedTask]);
+
+  useEffect(() => {
+    if (commentToDeleteId && !selectedTask) {
+      setCommentToDeleteId(null);
+    }
+  }, [commentToDeleteId, selectedTask]);
+
+  const handleOpenCreate = () => {
+    setTaskForm({
+      title: '',
+      description: '',
+      assigneeId: currentUserId,
+      priority: 'medium',
+      isUrgent: false,
+      hasDeadline: true,
+      dueDate: '',
+    });
+    setIsFormOpen(true);
+  };
+
+  const handleSaveTask = () => {
+    if (!taskForm.title.trim()) {
+      alert('Укажите название задачи.');
+      return;
+    }
+    const dueDateValue = taskForm.hasDeadline && taskForm.dueDate
+      ? new Date(`${taskForm.dueDate}T18:00:00`)
+      : null;
+
+    const payload: Omit<Task, 'id' | 'createdAt'> = {
+      title: taskForm.title.trim(),
+      description: taskForm.description.trim(),
+      assigneeId: taskForm.assigneeId || currentUserId,
+      creatorId: currentUserId,
+      status: 'open',
+      priority: taskForm.priority,
+      isUrgent: taskForm.isUrgent,
+      dueDate: dueDateValue,
+      comments: [],
+      rewardAmount: undefined,
+      penaltyAmount: undefined,
+      completedAt: null,
+    };
+
+    const newId = addTask(payload);
+    setIsFormOpen(false);
+    setSelectedTaskId(newId);
+    setIsDetailOpen(true);
+  };
+
+  const handleOpenDetail = (task: Task) => {
+    setSelectedTaskId(task.id);
+    setIsCommentsOpen(false);
+    setIsDetailOpen(true);
+  };
+
+  const handleOpenComments = (task: Task) => {
+    setSelectedTaskId(task.id);
+    setNewCommentText('');
+    setIsCommentsOpen(true);
+  };
+
+  const handleSaveDetail = () => {
+    if (!selectedTask) return;
+    const dueDateValue = detailDraft.hasDeadline && detailDraft.dueDate
+      ? new Date(`${detailDraft.dueDate}T18:00:00`)
+      : null;
+    const completedAtValue =
+      detailDraft.status === 'completed'
+        ? selectedTask.completedAt || new Date()
+        : null;
+
+    updateTask(selectedTask.id, {
+      title: detailDraft.title.trim() || selectedTask.title,
+      description: detailDraft.description.trim(),
+      assigneeId: detailDraft.assigneeId,
+      priority: detailDraft.priority,
+      isUrgent: detailDraft.isUrgent,
+      dueDate: dueDateValue,
+      status: detailDraft.status,
+      rewardAmount: detailDraft.rewardAmount === '' ? undefined : Number(detailDraft.rewardAmount),
+      penaltyAmount: detailDraft.penaltyAmount === '' ? undefined : Number(detailDraft.penaltyAmount),
+      completedAt: completedAtValue,
+    });
+    setIsDetailOpen(false);
+  };
+
+  const handleCompleteTask = () => {
+    if (!selectedTask) return;
+    updateTask(selectedTask.id, {
+      status: 'completed',
+      completedAt: new Date(),
+    });
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    if (!confirm('Удалить задачу?')) return;
+    deleteTask(taskId);
+    if (selectedTaskId === taskId) {
+      setIsDetailOpen(false);
+      setSelectedTaskId(null);
+    }
+  };
+
+  const handleAddComment = () => {
+    if (!selectedTask || !newCommentText.trim()) return;
+    const newComment: TaskComment = {
+      id: createTempId(),
+      text: newCommentText.trim(),
+      createdAt: new Date(),
+      authorId: currentUserId,
+    };
+    updateTask(selectedTask.id, {
+      comments: [...(selectedTask.comments || []), newComment],
+    });
+    setNewCommentText('');
+  };
+
+  const handleDeleteComment = (commentId: string) => {
+    setCommentToDeleteId(commentId);
+  };
+
+  const handleConfirmDeleteComment = () => {
+    if (!selectedTask || !commentToDeleteId) return;
+    updateTask(selectedTask.id, {
+      comments: (selectedTask.comments || []).filter((comment) => comment.id !== commentToDeleteId),
+    });
+    setCommentToDeleteId(null);
+  };
+
+  const renderFilterButton = (
+    label: string,
+    count: number,
+    isActive: boolean,
+    onClick: () => void,
+    icon?: LucideIcon
+  ) => {
+    const Icon = icon;
+    return (
+      <button
+        onClick={onClick}
+        className={cn(
+          'flex items-center justify-between rounded-none px-3 py-2 text-sm transition-all duration-200 ease-out',
+          isActive
+            ? 'bg-primary/10 text-primary shadow-[0_12px_26px_rgba(15,23,42,0.12)] -translate-y-[1px]'
+            : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground hover:shadow-[0_12px_26px_rgba(15,23,42,0.10)] hover:-translate-y-[1px]'
+        )}
+      >
+        <span className="flex items-center gap-2">
+          {Icon && <Icon className="h-4 w-4 text-current/70" />}
+          <span>{label}</span>
+        </span>
+        <span className="ml-3 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-none bg-muted text-[11px] font-semibold text-muted-foreground">
+          {count}
+        </span>
+      </button>
+    );
+  };
+
+  return (
+    <AppLayout title="Задачи" subtitle="Контроль задач и исполнителей">
+      <div className="grid grid-cols-12 gap-6 animate-fade-up min-h-full">
+        <aside className="col-span-12 xl:col-span-3 space-y-4">
+          <div className="glass-card rounded-2xl p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">Фильтры</h3>
+            {isDirector &&
+              renderFilterButton('Все задачи', counts.all, leftFilter === 'all', () => setLeftFilter('all'), ListChecks)}
+            {renderFilterButton('Мои задачи', counts.mine, leftFilter === 'mine', () => setLeftFilter('mine'), User)}
+            {renderFilterButton('Активные', counts.active, leftFilter === 'active', () => setLeftFilter('active'), Clock3)}
+            {renderFilterButton('Завершенные', counts.completed, leftFilter === 'completed', () => setLeftFilter('completed'), CheckCircle2)}
+          </div>
+        </aside>
+
+        <section className="col-span-12 xl:col-span-9 flex flex-col gap-4 min-h-0">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm text-muted-foreground">Всего задач: {filteredTasks.length}</p>
+              <p className="text-xs text-muted-foreground">Активных: {counts.active}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {(['all', 'high', 'medium', 'low'] as const).map((value) => {
+                const isActive = priorityFilter === value;
+                const label =
+                  value === 'all' ? 'Все приоритеты' : priorityLabels[value as Task['priority']];
+                const activeStyle =
+                  value === 'all'
+                    ? 'bg-primary/10 text-primary border-primary/30'
+                    : `${priorityStyles[value as Task['priority']]} border-transparent shadow-sm`;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setPriorityFilter(value)}
+                    aria-pressed={isActive}
+                    className={cn(
+                      'rounded-none px-3 py-1.5 text-xs font-medium border transition-colors whitespace-nowrap',
+                      isActive
+                        ? activeStyle
+                        : 'bg-muted/60 text-muted-foreground border-border hover:bg-muted'
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => setUrgentOnly((prev) => !prev)}
+                className={cn(
+                  'ios-button-secondary text-xs',
+                  urgentOnly && 'bg-orange-500/10 text-orange-600 border-orange-500/30'
+                )}
+              >
+                <Flame className="h-4 w-4 fill-current" /> Срочные
+              </button>
+              <button onClick={handleOpenCreate} className="ios-button-primary text-xs">
+                <Plus className="h-4 w-4" /> Поставить задачу
+              </button>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-2xl overflow-hidden bg-muted/30">
+            <div className="h-[690px] max-h-[75vh] overflow-y-auto overflow-x-hidden custom-scrollbar">
+              <table className="w-full table-fixed border-separate border-spacing-y-2 text-sm">
+                <thead className="sticky top-0 z-20">
+                  <tr className="bg-white/90 backdrop-blur-md">
+                    <th className="w-[32%] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Описание</th>
+                    <th className="w-[12%] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Дата создания</th>
+                    <th className="w-[12%] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Дедлайн</th>
+                    <th className="w-[14%] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Ответственный</th>
+                    <th className="w-[10%] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Статус</th>
+                    <th className="w-[18%] px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Комментарии</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedTasks.map((task) => {
+                    const status = getDisplayStatus(task);
+                    const assigneeName = employees.find((emp) => emp.id === task.assigneeId)?.name || '—';
+                    return (
+                    <tr
+                      key={task.id}
+                      onClick={() => handleOpenDetail(task)}
+                      className="group cursor-pointer bg-white"
+                    >
+                        <td className="bg-white px-4 py-3 transition-all duration-200 ease-out group-hover:bg-primary/10 group-hover:-translate-y-[2px]">
+                          <div className="flex items-start gap-2 min-w-0">
+                            {task.isUrgent && (
+                              <Flame className="h-4 w-4 shrink-0 text-orange-500 fill-current" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground truncate">{task.title}</p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {task.description || '—'}
+                              </p>
+                              <span className={cn('inline-flex mt-1 px-2 py-0.5 rounded-full text-[11px] font-medium', priorityStyles[task.priority])}>
+                                {priorityLabels[task.priority]}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="text-sm text-muted-foreground bg-white px-4 py-3 transition-all duration-200 ease-out group-hover:bg-primary/10 group-hover:-translate-y-[2px]">{formatDate(task.createdAt)}</td>
+                        <td className="text-sm text-muted-foreground bg-white px-4 py-3 transition-all duration-200 ease-out group-hover:bg-primary/10 group-hover:-translate-y-[2px]">{task.dueDate ? formatDate(task.dueDate) : 'Без срока'}</td>
+                        <td className="text-sm text-foreground truncate bg-white px-4 py-3 transition-all duration-200 ease-out group-hover:bg-primary/10 group-hover:-translate-y-[2px]">{assigneeName}</td>
+                        <td className="bg-white px-4 py-3 transition-all duration-200 ease-out group-hover:bg-primary/10 group-hover:-translate-y-[2px]">
+                          <span className={cn('status-badge capitalize whitespace-nowrap', statusStyles[status])}>
+                            {statusLabels[status]}
+                          </span>
+                        </td>
+                        <td className="text-center bg-white px-4 py-3 transition-all duration-200 ease-out group-hover:bg-primary/10 group-hover:-translate-y-[2px]">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleOpenComments(task);
+                            }}
+                            className="inline-flex items-center justify-center gap-1 rounded-full border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium text-foreground/80 shadow-sm transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <MessageSquare className="h-4 w-4" /> {task.comments?.length || 0}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {sortedTasks.length === 0 && (
+              <div className="p-8 text-center text-muted-foreground">Задачи не найдены</div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <Modal
+        isOpen={isFormOpen}
+        onClose={() => setIsFormOpen(false)}
+        title="Поставить задачу"
+        size="lg"
+      >
+        <div className="space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Название *</label>
+            <input
+              type="text"
+              className="ios-input"
+              value={taskForm.title}
+              onChange={(event) => setTaskForm((prev) => ({ ...prev, title: event.target.value }))}
+              placeholder="Введите название"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Суть задачи</label>
+            <textarea
+              className="ios-input min-h-[100px]"
+              value={taskForm.description}
+              onChange={(event) => setTaskForm((prev) => ({ ...prev, description: event.target.value }))}
+              placeholder="Опишите задачу"
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Дата завершения</label>
+              <input
+                type="date"
+                className="ios-input"
+                value={taskForm.dueDate}
+                onChange={(event) => setTaskForm((prev) => ({ ...prev, dueDate: event.target.value }))}
+                disabled={!taskForm.hasDeadline}
+              />
+              <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={!taskForm.hasDeadline}
+                  onChange={(event) =>
+                    setTaskForm((prev) => ({ ...prev, hasDeadline: !event.target.checked }))
+                  }
+                />
+                Без срока
+              </label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Ответственный</label>
+              <select
+                className="ios-input"
+                value={taskForm.assigneeId}
+                onChange={(event) => setTaskForm((prev) => ({ ...prev, assigneeId: event.target.value }))}
+              >
+                {assignableEmployees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Приоритет</label>
+              <div className="flex flex-wrap items-center gap-2">
+                {(['high', 'medium', 'low'] as Task['priority'][]).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setTaskForm((prev) => ({ ...prev, priority: value }))}
+                    aria-pressed={taskForm.priority === value}
+                    className={cn(
+                      'rounded-none px-3 py-1.5 text-xs font-medium border transition-colors whitespace-nowrap',
+                      taskForm.priority === value
+                        ? `${priorityStyles[value]} border-transparent shadow-sm`
+                        : 'bg-muted/60 text-muted-foreground border-border hover:bg-muted'
+                    )}
+                  >
+                    {priorityLabels[value]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="block text-sm font-medium text-foreground">Срочно</label>
+              <button
+                onClick={() => setTaskForm((prev) => ({ ...prev, isUrgent: !prev.isUrgent }))}
+                className={cn(
+                  'rounded-none px-3 py-1.5 text-xs font-medium border transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap',
+                  taskForm.isUrgent
+                    ? 'bg-red-500/10 text-red-600 border-red-500/30 shadow-sm'
+                    : 'bg-muted/60 text-muted-foreground border-border hover:bg-muted'
+                )}
+              >
+                <Flame className="h-4 w-4 fill-current" /> Срочно
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button onClick={() => setIsFormOpen(false)} className="ios-button-secondary">
+              Отмена
+            </button>
+            <button onClick={handleSaveTask} className="ios-button-primary">
+              Создать
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isCommentsOpen}
+        onClose={() => setIsCommentsOpen(false)}
+        title={selectedTask ? `Комментарии: ${selectedTask.title}` : 'Комментарии'}
+        size="lg"
+      >
+        {selectedTask && (
+          <div className="space-y-3">
+            <textarea
+              className="ios-input min-h-[90px]"
+              placeholder="Добавить комментарий"
+              value={newCommentText}
+              onChange={(event) => setNewCommentText(event.target.value)}
+            />
+            <div className="flex justify-end">
+              <button onClick={handleAddComment} className="ios-button-primary text-xs">
+                Добавить
+              </button>
+            </div>
+            {(selectedTask.comments || []).length === 0 && (
+              <p className="text-xs text-muted-foreground">Комментарии отсутствуют.</p>
+            )}
+            <div className="space-y-3 max-h-80 overflow-y-auto no-scrollbar pr-1 scroll-fade-vertical pt-2 pb-2">
+              {(selectedTask.comments || [])
+                .slice()
+                .sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0))
+                .map((comment) => {
+                  const author = employees.find((emp) => emp.id === comment.authorId);
+                  const authorName = author?.name || 'Неизвестно';
+                  return (
+                    <div key={comment.id} className="rounded-xl bg-muted/50 p-3 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
+                            {getInitials(authorName)}
+                          </span>
+                          <span
+                            className={cn(
+                              'font-medium',
+                              author?.role === 'admin'
+                                ? 'text-white bg-foreground px-2 py-0.5 rounded-full'
+                                : 'text-primary bg-primary/10 px-2 py-0.5 rounded-full'
+                            )}
+                          >
+                            {authorName}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span>{formatDateTime(comment.createdAt)}</span>
+                          {(isDirector || comment.authorId === currentUserId) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteComment(comment.id)}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500/15 text-red-600 hover:bg-red-500/25"
+                              title="Удалить"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-sm text-foreground">{comment.text}</p>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        title={selectedTask?.title || 'Карточка задачи'}
+        size="xl"
+      >
+        {selectedTask && (
+          <div className="space-y-6 pb-2">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Создана: {formatDateTime(selectedTask.createdAt)}</p>
+                <p className="text-xs text-muted-foreground">Дедлайн: {selectedTask.dueDate ? formatDateTime(selectedTask.dueDate) : 'Без срока'}</p>
+                {selectedTask.completedAt && (
+                  <p className="text-xs text-muted-foreground">Завершена: {formatDateTime(selectedTask.completedAt)}</p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {detailDraft.isUrgent && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-3 py-1 text-xs font-medium text-orange-600">
+                    <Flame className="h-4 w-4 fill-current" /> Срочно
+                  </span>
+                )}
+                <span className={cn('status-badge', statusStyles[getDisplayStatus(selectedTask)])}>
+                  {statusLabels[getDisplayStatus(selectedTask)]}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="glass-card rounded-xl p-4 space-y-3">
+                <h4 className="text-sm font-semibold text-foreground">Основная информация</h4>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">Название</label>
+                  <input
+                    className="ios-input"
+                    value={detailDraft.title}
+                    onChange={(event) => setDetailDraft((prev) => ({ ...prev, title: event.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">Ответственный</label>
+                  <select
+                    className="ios-input"
+                    value={detailDraft.assigneeId}
+                    onChange={(event) => setDetailDraft((prev) => ({ ...prev, assigneeId: event.target.value }))}
+                  >
+                    {assignableEmployees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Дедлайн</label>
+                    <input
+                      type="date"
+                      className="ios-input"
+                      value={detailDraft.dueDate}
+                      onChange={(event) => setDetailDraft((prev) => ({ ...prev, dueDate: event.target.value }))}
+                      disabled={!detailDraft.hasDeadline}
+                    />
+                    <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={!detailDraft.hasDeadline}
+                        onChange={(event) =>
+                          setDetailDraft((prev) => ({ ...prev, hasDeadline: !event.target.checked }))
+                        }
+                      />
+                      Без срока
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Приоритет</label>
+                    <select
+                      className="ios-input"
+                      value={detailDraft.priority}
+                      onChange={(event) =>
+                        setDetailDraft((prev) => ({ ...prev, priority: event.target.value as Task['priority'] }))
+                      }
+                    >
+                      {Object.entries(priorityLabels).map(([key, label]) => (
+                        <option key={key} value={key}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => setDetailDraft((prev) => ({ ...prev, isUrgent: !prev.isUrgent }))}
+                    className={cn(
+                      'rounded-none px-3 py-1.5 text-xs font-medium border transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap',
+                      detailDraft.isUrgent
+                        ? 'bg-red-500/10 text-red-600 border-red-500/30 shadow-sm'
+                        : 'bg-muted/60 text-muted-foreground border-border hover:bg-muted'
+                    )}
+                  >
+                    <Flame className="h-4 w-4 fill-current" /> Срочно
+                  </button>
+                  {(['open', 'in_progress', 'completed'] as Task['status'][]).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setDetailDraft((prev) => ({ ...prev, status: value }))}
+                      aria-pressed={detailDraft.status === value}
+                      className={cn(
+                        'rounded-none px-3 py-1.5 text-xs font-medium border transition-colors text-center whitespace-nowrap',
+                        detailDraft.status === value
+                          ? `${statusStyles[value]} border-transparent shadow-sm`
+                          : 'bg-muted/60 text-muted-foreground border-border hover:bg-muted'
+                      )}
+                    >
+                      {statusLabels[value]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="glass-card rounded-xl p-4 space-y-3">
+                <h4 className="text-sm font-semibold text-foreground">Суть задачи</h4>
+                <textarea
+                  className="ios-input min-h-[160px]"
+                  value={detailDraft.description}
+                  onChange={(event) => setDetailDraft((prev) => ({ ...prev, description: event.target.value }))}
+                  placeholder="Подробности по задаче"
+                />
+              </div>
+            </div>
+
+            {isDirector && (
+              <div className="glass-card rounded-xl p-4 space-y-3">
+                <h4 className="text-sm font-semibold text-foreground">Награда / штраф</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Награда</label>
+                    <input
+                      type="number"
+                      className="ios-input"
+                      value={detailDraft.rewardAmount}
+                      onChange={(event) => setDetailDraft((prev) => ({ ...prev, rewardAmount: event.target.value }))}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Штраф</label>
+                    <input
+                      type="number"
+                      className="ios-input"
+                      value={detailDraft.penaltyAmount}
+                      onChange={(event) => setDetailDraft((prev) => ({ ...prev, penaltyAmount: event.target.value }))}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="glass-card rounded-xl p-4 space-y-3">
+              <h4 className="text-sm font-semibold text-foreground">Комментарии</h4>
+              <textarea
+                className="ios-input min-h-[90px]"
+                placeholder="Добавить комментарий"
+                value={newCommentText}
+                onChange={(event) => setNewCommentText(event.target.value)}
+              />
+              <div className="flex justify-end">
+                <button onClick={handleAddComment} className="ios-button-primary text-xs">
+                  Добавить
+                </button>
+              </div>
+              {(selectedTask.comments || []).length === 0 && (
+                <p className="text-xs text-muted-foreground">Комментарии отсутствуют.</p>
+              )}
+              <div className="space-y-3 max-h-80 overflow-y-auto no-scrollbar pr-1 scroll-fade-vertical pt-2 pb-2">
+                {(selectedTask.comments || [])
+                  .slice()
+                  .sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0))
+                  .map((comment) => {
+                    const author = employees.find((emp) => emp.id === comment.authorId);
+                    const authorName = author?.name || 'Неизвестно';
+                    return (
+                    <div key={comment.id} className="rounded-xl bg-muted/50 p-3 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
+                            {getInitials(authorName)}
+                          </span>
+                          <span
+                            className={cn(
+                              'font-medium',
+                              author?.role === 'admin'
+                                ? 'text-white bg-foreground px-2 py-0.5 rounded-full'
+                                : 'text-primary bg-primary/10 px-2 py-0.5 rounded-full'
+                            )}
+                          >
+                            {authorName}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span>{formatDateTime(comment.createdAt)}</span>
+                          {(isDirector || comment.authorId === currentUserId) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteComment(comment.id)}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500/15 text-red-600 hover:bg-red-500/25"
+                              title="Удалить"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-sm text-foreground">{comment.text}</p>
+                    </div>
+                  );
+                })}
+              </div>
+          </div>
+
+            <div className="sticky bottom-0 z-10 -mx-6 -mb-4 mt-2 bg-[hsl(var(--border-solid))] px-6 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex gap-2">
+                  <button onClick={() => handleDeleteTask(selectedTask.id)} className="ios-button-secondary text-xs">
+                    Удалить
+                  </button>
+                  <button onClick={handleCompleteTask} className="ios-button-secondary text-xs">
+                    Завершить
+                  </button>
+                </div>
+                <button onClick={handleSaveDetail} className="ios-button-primary">
+                  Сохранить изменения
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {commentToDeleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setCommentToDeleteId(null)}
+          />
+          <div className="relative w-[min(90vw,360px)] glass-card rounded-2xl p-6">
+            <h3 className="text-base font-semibold text-foreground">Удалить комментарий?</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Это действие нельзя отменить.
+            </p>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setCommentToDeleteId(null)} className="ios-button-secondary text-xs">
+                Отмена
+              </button>
+              <button
+                onClick={handleConfirmDeleteComment}
+                className="ios-button-secondary text-xs text-destructive border border-destructive/30 bg-destructive/10 hover:bg-destructive/15"
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AppLayout>
+  );
+}
