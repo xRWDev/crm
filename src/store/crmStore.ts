@@ -284,6 +284,20 @@ const initialClients: Client[] = [
         phones: ['+1-555-0199'],
         emails: ['olivia@techcorp.com'],
       },
+      {
+        id: 'contact-2',
+        name: 'Aaron Cole',
+        position: 'Operations',
+        phones: ['+1-555-0188'],
+        emails: ['ops@techcorp.com'],
+      },
+      {
+        id: 'contact-3',
+        name: 'Michelle Hart',
+        position: 'Finance Director',
+        phones: ['+1-555-0170'],
+        emails: ['finance@techcorp.com'],
+      },
     ],
     comments: [
       {

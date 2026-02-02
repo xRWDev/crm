@@ -3,12 +3,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
-  CalendarClock,
   ChevronRight,
   FileSpreadsheet,
   Filter,
+  FolderOpen,
   Globe,
   Mail,
+  MessageCircle,
   Phone,
   PhoneCall,
   Plus,
@@ -72,7 +73,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
-import { useCRMStore, Client, ClientContact } from "@/store/crmStore";
+import { useCRMStore, Client, ClientContact, Employee } from "@/store/crmStore";
 import { useAuthStore } from "@/store/authStore";
 
 const CLIENT_TYPES = ["client", "supplier", "competitor", "partner"] as const;
@@ -151,6 +152,20 @@ const clientTypeTone: Record<ClientType, string> = {
   partner: "bg-sky-100/70 text-sky-700",
 };
 
+const communicationStatusLabel: Record<CommunicationStatus, string> = {
+  none: "Без коммуникации",
+  refused: "Отказ",
+  in_progress: "В работе",
+  success: "Завершено удачно",
+};
+
+const communicationStatusTone: Record<CommunicationStatus, string> = {
+  none: "bg-slate-100/70 text-slate-600",
+  refused: "bg-rose-100/70 text-rose-700",
+  in_progress: "bg-amber-100/70 text-amber-700",
+  success: "bg-emerald-100/70 text-emerald-700",
+};
+
 const columnsOrderDefault = [
   "starred",
   "name",
@@ -183,6 +198,42 @@ const columnLabels: Record<ColumnKey, string> = {
   responsibleName: "Ответственный",
 };
 
+const SAMPLE_DEALS: NonNullable<ClientRecord["deals"]> = [
+  {
+    id: "deal-demo-1",
+    createdAt: new Date("2026-01-21T09:30:00"),
+    title: "Пакет Банан 4x6 (ПВД)",
+    unit: "шт.",
+    qty: 1200,
+    price: 0.9,
+    amount: 1080,
+    declarationNumber: "06532/22/01/000122",
+    comment: "Звонок по продлению договора.",
+  },
+  {
+    id: "deal-demo-2",
+    createdAt: new Date("2026-01-22T11:10:00"),
+    title: "Пакет Банан 4x6 (ПВД) 50 мкм",
+    unit: "кг",
+    qty: 100,
+    price: 0.32,
+    amount: 32,
+    declarationNumber: "06532/22/01/000123",
+    comment: "Ожидаем подтверждение объема.",
+  },
+  {
+    id: "deal-demo-3",
+    createdAt: new Date("2026-01-23T15:45:00"),
+    title: "Пакет Банан 4x6 (ПВД) усиленный",
+    unit: "м",
+    qty: 5000,
+    price: 0.19,
+    amount: 950,
+    declarationNumber: "06532/22/01/000124",
+    comment: "Нужен финальный расчет по логистике.",
+  },
+];
+
 const MOCK_ACTIVITIES = ["Аптеки", "Банки", "Прачечная", "HoReCa", "Строительство", "Ритейл"];
 const MOCK_PRODUCTS = ["Канцелярия", "Одежда", "Игрушки", "Медтовары", "Техника"];
 const MOCK_REGIONS = ["Киевская", "Львовская", "Одесская", "Харьковская", "Днепр"];
@@ -206,6 +257,11 @@ const formatDate = (value?: Date | string | null) => {
 const formatDateTime = (value?: Date | string | null) => {
   const date = toDate(value);
   return date ? format(date, "dd.MM.yyyy, HH:mm") : "—";
+};
+
+const formatAmount = (value?: number | null) => {
+  if (value === null || value === undefined) return "—";
+  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(value);
 };
 
 const getInitials = (value?: string) => {
@@ -1037,7 +1093,7 @@ const ClientsPage = () => {
         open={isSheetOpen}
         onOpenChange={setIsSheetOpen}
         client={selectedClient}
-        employees={employeesList}
+        employees={employees}
         updateClient={updateClient}
         updateMockClient={updateMockClient}
         currentUserId={currentUserId}
@@ -1478,7 +1534,7 @@ const ClientDetailSheet = ({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   client: ClientRecord | null;
-  employees: { id: string; name: string }[];
+  employees: Employee[];
   updateClient: (id: string, data: Partial<Client>) => void;
   updateMockClient: (id: string, data: Partial<ClientRecord>) => void;
   currentUserId: string;
@@ -1499,6 +1555,33 @@ const ClientDetailSheet = ({
     setDraft(client);
     setIsEditing(false);
   }, [client, open]);
+
+  const metaLine = [client.company, client.city, client.region].filter(Boolean).join(" • ");
+  const deals = client.deals && client.deals.length ? client.deals : SAMPLE_DEALS;
+  const contactList = client.contacts ?? [];
+  const communications = client.communications ?? [];
+  const communicationPreview = communications.slice(0, 3);
+  const responsible = employees.find((emp) => emp.id === (client.responsibleId || client.ownerId));
+  const tabs = [
+    {
+      value: "deals",
+      label: "Сделки",
+      hint: "Просчеты и расчеты",
+      icon: FileSpreadsheet,
+    },
+    {
+      value: "communications",
+      label: "Коммуникации",
+      hint: "Лента и заметки",
+      icon: MessageCircle,
+    },
+    {
+      value: "files",
+      label: "Файлы",
+      hint: "Документы клиента",
+      icon: FolderOpen,
+    },
+  ];
 
   const updateDraft = <K extends keyof ClientRecord>(key: K, value: ClientRecord[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -1567,10 +1650,10 @@ const ClientDetailSheet = ({
         if (!next) setIsEditing(false);
       }}
     >
-      <DialogContent className="client-details-modal modal-surface w-[min(96vw,1100px)] max-w-5xl max-h-[90vh] overflow-y-auto rounded-[28px] p-6">
+      <DialogContent className="client-details-modal modal-surface w-[min(96vw,1280px)] max-w-6xl max-h-[90vh] overflow-y-auto rounded-[28px] p-6">
         <div className="space-y-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-[240px]">
+            <div className="min-w-[240px] space-y-2">
               {isEditing ? (
                 <div className="space-y-2">
                   <Input
@@ -1607,47 +1690,276 @@ const ClientDetailSheet = ({
               ) : (
                 <>
                   <DialogTitle className="text-2xl">{client.name}</DialogTitle>
-                  <p className="text-sm text-muted-foreground">{client.company ?? "Карточка клиента"}</p>
-                  {client.clientType && (
-                    <Badge className={cn("mt-2", clientTypeTone[client.clientType])}>
-                      {clientTypeLabel[client.clientType]}
-                    </Badge>
-                  )}
+                  <p className="text-sm text-muted-foreground">{metaLine || "Карточка клиента"}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {client.clientType && (
+                      <Badge className={cn("text-xs", clientTypeTone[client.clientType])}>
+                        {clientTypeLabel[client.clientType]}
+                      </Badge>
+                    )}
+                    {client.activityType && (
+                      <Badge variant="secondary" className="text-xs">
+                        {client.activityType}
+                      </Badge>
+                    )}
+                    {client.productCategory && (
+                      <Badge variant="secondary" className="text-xs">
+                        {client.productCategory}
+                      </Badge>
+                    )}
+                  </div>
                 </>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="secondary">
-                <Phone className="h-4 w-4" /> Позвонить
-              </Button>
-              <Button size="sm" variant="secondary">
-                <CalendarClock className="h-4 w-4" /> Запланировать
-              </Button>
-              <Button size="sm" variant="secondary">
-                <Plus className="h-4 w-4" /> Создать сделку
-              </Button>
-              {isEditing ? (
-                <>
-                  <Button size="sm" onClick={handleSave} disabled={!draft.name?.trim()}>
-                    Сохранить
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={handleCancelEdit}>
-                    Отменить
-                  </Button>
-                </>
-              ) : null}
-            </div>
+            {isEditing ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" onClick={handleSave} disabled={!draft.name?.trim()}>
+                  Сохранить
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleCancelEdit}>
+                  Отменить
+                </Button>
+              </div>
+            ) : null}
           </div>
 
-          <Tabs defaultValue="overview">
-            <TabsList>
-              <TabsTrigger value="overview">Обзор</TabsTrigger>
-              <TabsTrigger value="deals">Сделки</TabsTrigger>
-              <TabsTrigger value="files">Файлы</TabsTrigger>
-              <TabsTrigger value="history">История</TabsTrigger>
-            </TabsList>
-            <TabsContent value="overview" className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Tabs defaultValue="deals">
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.65fr,0.95fr]">
+              <div className="space-y-4">
+                <TabsList className="grid h-auto w-full grid-cols-1 gap-3 bg-transparent p-0 sm:grid-cols-3">
+                  {tabs.map((tab) => {
+                    const Icon = tab.icon;
+                    return (
+                      <TabsTrigger
+                        key={tab.value}
+                        value={tab.value}
+                        className="group h-auto w-full flex-col items-start justify-start gap-2 rounded-[18px] border border-transparent bg-white/70 px-4 py-3 text-left text-foreground shadow-sm transition hover:bg-white/90 data-[state=active]:border-primary/40 data-[state=active]:bg-white data-[state=active]:shadow-md"
+                      >
+                        <div className="flex items-center gap-2 text-sm font-semibold">
+                          <Icon className="h-4 w-4 text-primary" />
+                          {tab.label}
+                        </div>
+                        <span className="text-xs text-muted-foreground">{tab.hint}</span>
+                      </TabsTrigger>
+                    );
+                  })}
+                </TabsList>
+
+                <TabsContent value="deals" className="mt-0 space-y-4">
+                  <InfoCard title="Сделки">
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-sm">
+                        <thead>
+                          <tr className="border-b border-border/60 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                            <th className="px-3 py-2 text-left">Дата</th>
+                            <th className="px-3 py-2 text-left">Товар / услуга</th>
+                            <th className="px-3 py-2 text-left">Ед.</th>
+                            <th className="px-3 py-2 text-left">Кол-во</th>
+                            <th className="px-3 py-2 text-left">Цена</th>
+                            <th className="px-3 py-2 text-left">№ дек.</th>
+                            <th className="px-3 py-2 text-left">Комментарий</th>
+                            <th className="px-3 py-2 text-left">Сумма</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {deals.map((deal) => (
+                            <tr key={deal.id} className="border-b border-border/50 last:border-b-0">
+                              <td className="px-3 py-3 text-xs text-muted-foreground">
+                                {formatDate(deal.createdAt)}
+                              </td>
+                              <td className="px-3 py-3">
+                                <div className="text-sm font-medium text-foreground">{deal.title}</div>
+                              </td>
+                              <td className="px-3 py-3 text-xs text-muted-foreground">{deal.unit}</td>
+                              <td className="px-3 py-3 text-sm">{formatAmount(deal.qty)}</td>
+                              <td className="px-3 py-3 text-sm">{formatAmount(deal.price)}</td>
+                              <td className="px-3 py-3 text-xs text-muted-foreground">
+                                {deal.declarationNumber || "—"}
+                              </td>
+                              <td className="px-3 py-3 text-sm">{deal.comment || "—"}</td>
+                              <td className="px-3 py-3 text-sm font-semibold">{formatAmount(deal.amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </InfoCard>
+                </TabsContent>
+
+                <TabsContent value="communications" className="mt-0 space-y-4">
+                  <InfoCard title="План коммуникации">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <InfoRow label="Следующая связь" value={formatDateTime(client.nextCommunicationAt)} />
+                      <InfoRow label="Последняя связь" value={formatDateTime(client.lastCommunicationAt)} />
+                    </div>
+                    <div className="mt-3">
+                      <p className="text-xs text-muted-foreground">Шпаргалка</p>
+                      <Input
+                        className="mt-2"
+                        placeholder="Короткая заметка для звонка"
+                        value={note}
+                        onChange={(event) => setNote(event.target.value)}
+                      />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button size="sm" variant="secondary">
+                        Закрыть коммуникацию
+                      </Button>
+                      <Button size="sm" variant="secondary">
+                        Перенести
+                      </Button>
+                      <ReminderDropdown
+                        onSelect={(minutes) => {
+                          toast({
+                            title: "Напоминание установлено",
+                            description: `Через ${minutes} мин.`,
+                          });
+                        }}
+                      />
+                    </div>
+                  </InfoCard>
+
+                  <InfoCard title="История коммуникаций">
+                    {communications.length ? (
+                      <div className="space-y-2">
+                        {communications.map((item) => (
+                          <div key={item.id} className="rounded-xl bg-white/70 px-3 py-2 text-sm">
+                            <p className="font-medium">{formatDateTime(item.scheduledAt)}</p>
+                            <p className="text-xs text-muted-foreground">{item.note || "—"}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">История пока пуста.</p>
+                    )}
+                  </InfoCard>
+
+                  <CommentsTimeline
+                    title="Лента общения"
+                    items={comments}
+                    value={commentInput}
+                    onChange={setCommentInput}
+                    onSubmit={handleAddComment}
+                    onDelete={handleDeleteComment}
+                    currentUserName={currentUserName}
+                    currentUserId={currentUserId}
+                    isDirector={isDirector}
+                    fallbackAuthorName={client.responsibleName || currentUserName}
+                  />
+                </TabsContent>
+
+                <TabsContent value="files" className="mt-0">
+                  <InfoCard title="Файлы">
+                    <p className="text-sm text-muted-foreground">
+                      Нет загруженных файлов. Добавьте документы клиента.
+                    </p>
+                  </InfoCard>
+                </TabsContent>
+              </div>
+
+              <div className="space-y-4">
+                <InfoCard
+                  title="Коммуникация"
+                  titleAddon={
+                    client.status ? (
+                      <Badge className={cn("text-xs", communicationStatusTone[client.status])}>
+                        {communicationStatusLabel[client.status]}
+                      </Badge>
+                    ) : null
+                  }
+                >
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <InfoRow label="Следующая связь" value={formatDateTime(client.nextCommunicationAt)} />
+                    <InfoRow label="Последняя связь" value={formatDateTime(client.lastCommunicationAt)} />
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-muted-foreground">Ближайшие коммуникации</p>
+                    {communicationPreview.length ? (
+                      communicationPreview.map((item) => (
+                        <div key={item.id} className="rounded-xl bg-white/70 px-3 py-2 text-xs">
+                          <p className="font-medium">{formatDateTime(item.scheduledAt)}</p>
+                          <p className="text-muted-foreground">{item.note || "Без заметки"}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Нет запланированных коммуникаций.</p>
+                    )}
+                  </div>
+                </InfoCard>
+
+                <InfoCard title="Ответственный">
+                  {responsible ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-sm font-semibold text-primary">
+                          {getInitials(responsible.name)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold">{responsible.name}</p>
+                          <p className="text-xs text-muted-foreground">{responsible.position || "—"}</p>
+                        </div>
+                      </div>
+                      {responsible.email && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Mail className="h-3.5 w-3.5" />
+                          <span>{responsible.email}</span>
+                        </div>
+                      )}
+                      {responsible.phones?.length ? (
+                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          {responsible.phones.map((phone) => (
+                            <span
+                              key={phone}
+                              className="inline-flex items-center gap-1 rounded-full bg-white/70 px-2 py-1"
+                            >
+                              <Phone className="h-3 w-3" />
+                              {phone}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Ответственный не назначен.</p>
+                  )}
+                </InfoCard>
+
+                <InfoCard title={`Контактные лица (${contactList.length})`}>
+                  {contactList.length ? (
+                    <div className="space-y-3">
+                      {contactList.map((contact) => (
+                        <div key={contact.id} className="rounded-2xl border border-border/60 bg-white/70 p-3">
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-xs font-semibold text-primary">
+                              {getInitials(contact.name)}
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <p className="text-sm font-semibold">{contact.name}</p>
+                              <p className="text-xs text-muted-foreground">{contact.position || "—"}</p>
+                              <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                                {contact.phones.map((phone) => (
+                                  <div key={phone} className="flex items-center gap-2">
+                                    <Phone className="h-3.5 w-3.5" />
+                                    <span>{phone}</span>
+                                  </div>
+                                ))}
+                                {contact.emails.map((email) => (
+                                  <div key={email} className="flex items-center gap-2">
+                                    <Mail className="h-3.5 w-3.5" />
+                                    <span>{email}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Контактов нет.</p>
+                  )}
+                </InfoCard>
+
                 <InfoCard title="Информация о компании">
                   {isEditing ? (
                     <div className="grid gap-3">
@@ -1735,112 +2047,14 @@ const ClientDetailSheet = ({
                       <InfoRow label="Город" value={client.city || "—"} />
                       <InfoRow label="Вид деятельности" value={client.activityType || "—"} />
                       <InfoRow label="Продукция" value={client.productCategory || "—"} />
+                      <InfoRow label="Телефон" value={client.phone || "—"} />
                       <InfoRow label="Почта" value={client.email || "—"} />
                       <InfoRow label="Сайт" value={client.website || "—"} />
-                      <InfoRow label="Ответственный" value={client.responsibleName || "—"} />
                     </>
                   )}
                 </InfoCard>
-                <InfoCard title="Контактные лица">
-                  {client.contacts && client.contacts.length ? (
-                    <div className="space-y-3">
-                      {client.contacts.map((contact) => (
-                        <div key={contact.id} className="rounded-xl bg-white/70 p-3">
-                          <p className="text-sm font-semibold">{contact.name}</p>
-                          <p className="text-xs text-muted-foreground">{contact.position}</p>
-                          <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                            {contact.phones.map((phone, index) => (
-                              <Badge key={index} variant="secondary">
-                                {phone}
-                              </Badge>
-                            ))}
-                            {contact.emails.map((email, index) => (
-                              <Badge key={index} variant="secondary">
-                                {email}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Контактов нет.</p>
-                  )}
-                </InfoCard>
               </div>
-
-              <InfoCard title="Коммуникации">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <InfoRow label="Следующая связь" value={formatDate(client.nextCommunicationAt)} />
-                  <InfoRow label="Последняя связь" value={formatDate(client.lastCommunicationAt)} />
-                </div>
-                <div className="mt-3">
-                  <p className="text-xs text-muted-foreground">Шпаргалка</p>
-                  <Input
-                    className="mt-2"
-                    placeholder="Короткая заметка для звонка"
-                    value={note}
-                    onChange={(event) => setNote(event.target.value)}
-                  />
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button size="sm" variant="secondary">
-                    Закрыть коммуникацию
-                  </Button>
-                  <Button size="sm" variant="secondary">
-                    Перенести
-                  </Button>
-                  <ReminderDropdown
-                    onSelect={(minutes) => {
-                      toast({
-                        title: "Напоминание установлено",
-                        description: `Через ${minutes} мин.`,
-                      });
-                    }}
-                  />
-                </div>
-                <div className="mt-4 space-y-2">
-                  <p className="text-xs text-muted-foreground">История коммуникаций</p>
-                  {client.communications && client.communications.length ? (
-                    client.communications.map((item) => (
-                      <div key={item.id} className="rounded-xl bg-white/70 px-3 py-2 text-sm">
-                        <p className="font-medium">{formatDate(item.scheduledAt)}</p>
-                        <p className="text-xs text-muted-foreground">{item.note || "—"}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">История пока пуста.</p>
-                  )}
-                </div>
-              </InfoCard>
-
-              <CommentsTimeline
-                items={comments}
-                value={commentInput}
-                onChange={setCommentInput}
-                onSubmit={handleAddComment}
-                onDelete={handleDeleteComment}
-                currentUserName={currentUserName}
-                currentUserId={currentUserId}
-                isDirector={isDirector}
-                fallbackAuthorName={client.responsibleName || currentUserName}
-              />
-            </TabsContent>
-            <TabsContent value="deals" className="mt-4">
-              <InfoCard title="Сделки">
-                <p className="text-sm text-muted-foreground">Раздел сделок клиента.</p>
-              </InfoCard>
-            </TabsContent>
-            <TabsContent value="files" className="mt-4">
-              <InfoCard title="Файлы">
-                <p className="text-sm text-muted-foreground">Файлы клиента.</p>
-              </InfoCard>
-            </TabsContent>
-            <TabsContent value="history" className="mt-4">
-              <InfoCard title="История">
-                <p className="text-sm text-muted-foreground">История коммуникаций.</p>
-              </InfoCard>
-            </TabsContent>
+            </div>
           </Tabs>
         </div>
       </DialogContent>
@@ -1848,9 +2062,22 @@ const ClientDetailSheet = ({
   );
 };
 
-const InfoCard = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <div className="glass-card rounded-[20px] p-4">
-    <h4 className="text-sm font-semibold mb-3">{title}</h4>
+const InfoCard = ({
+  title,
+  titleAddon,
+  className,
+  children,
+}: {
+  title: React.ReactNode;
+  titleAddon?: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) => (
+  <div className={cn("glass-card rounded-[20px] p-4", className)}>
+    <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="text-sm font-semibold">{title}</div>
+      {titleAddon}
+    </div>
     <div className="space-y-2 text-sm">{children}</div>
   </div>
 );
@@ -1880,6 +2107,7 @@ const ReminderDropdown = ({ onSelect }: { onSelect: (minutes: number) => void })
 );
 
 const CommentsTimeline = ({
+  title = "Комментарии",
   items,
   value,
   onChange,
@@ -1890,6 +2118,7 @@ const CommentsTimeline = ({
   isDirector,
   fallbackAuthorName,
 }: {
+  title?: string;
   items: { id: string; text: string; createdAt: Date; authorId?: string; authorName?: string }[];
   value: string;
   onChange: (value: string) => void;
@@ -1900,57 +2129,57 @@ const CommentsTimeline = ({
   isDirector: boolean;
   fallbackAuthorName: string;
 }) => (
-  <InfoCard title="Комментарии">
-    <textarea
-      className="ios-input min-h-[90px]"
-      placeholder="Добавить комментарий"
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-    />
-    <div className="flex justify-end">
-      <button onClick={onSubmit} className="ios-button-primary text-xs">
-        Добавить
-      </button>
-    </div>
-    {items.length === 0 && (
-      <p className="text-xs text-muted-foreground">Комментарии отсутствуют.</p>
-    )}
-    <div className="space-y-3 max-h-80 overflow-y-auto no-scrollbar pr-1 scroll-fade-vertical pt-2 pb-2">
-      {items
-        .slice()
-        .sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0))
-        .map((comment) => {
-          const authorName = comment.authorName || fallbackAuthorName || currentUserName || "Менеджер";
-          const canDelete = isDirector || comment.authorId === currentUserId;
-          return (
-            <div key={comment.id} className="rounded-xl bg-muted/50 p-3 space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
-                    {getInitials(authorName)}
-                  </span>
-                  <span className="font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                    {authorName}
-                  </span>
+  <InfoCard title={title}>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <textarea
+          className="ios-input min-h-[90px] flex-1"
+          placeholder="Добавить комментарий"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <button onClick={onSubmit} className="ios-button-primary text-xs">
+          Добавить
+        </button>
+      </div>
+      {items.length === 0 && (
+        <p className="text-xs text-muted-foreground">Комментарии отсутствуют.</p>
+      )}
+      <div className="space-y-3 max-h-80 overflow-y-auto no-scrollbar pr-1 scroll-fade-vertical pt-2 pb-2">
+        {items
+          .slice()
+          .sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0))
+          .map((comment) => {
+            const authorName = comment.authorName || fallbackAuthorName || currentUserName || "Менеджер";
+            const canDelete = isDirector || comment.authorId === currentUserId;
+            return (
+              <div key={comment.id} className="flex gap-3 rounded-2xl bg-muted/50 p-3">
+                <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
+                  {getInitials(authorName)}
                 </div>
-                <div className="flex items-center gap-3">
-                  <span>{formatDateTime(comment.createdAt)}</span>
-                  {canDelete && (
-                    <button
-                      type="button"
-                      onClick={() => onDelete(comment.id)}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500/15 text-red-600 hover:bg-red-500/25"
-                      title="Удалить"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
+                <div className="flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">{authorName}</span>
+                    <div className="flex items-center gap-3">
+                      <span>{formatDateTime(comment.createdAt)}</span>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => onDelete(comment.id)}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500/15 text-red-600 hover:bg-red-500/25"
+                          title="Удалить"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-sm text-foreground">{comment.text}</p>
                 </div>
               </div>
-              <p className="text-sm text-foreground">{comment.text}</p>
-            </div>
-          );
-        })}
+            );
+          })}
+      </div>
     </div>
   </InfoCard>
 );
@@ -1997,3 +2226,4 @@ const NotificationsStack = ({
 );
 
 export default ClientsPage;
+
