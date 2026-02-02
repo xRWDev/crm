@@ -6,7 +6,6 @@ import {
   ChevronRight,
   FileSpreadsheet,
   Filter,
-  FolderOpen,
   Globe,
   Mail,
   MessageCircle,
@@ -95,6 +94,7 @@ type ClientRecord = {
   productCategory?: string;
   clientType?: ClientType;
   status?: CommunicationStatus;
+  sourceChannel?: string;
   lastCommunicationAt?: Date | null;
   nextCommunicationAt?: Date | null;
   lastComment?: string;
@@ -150,20 +150,6 @@ const clientTypeTone: Record<ClientType, string> = {
   supplier: "bg-amber-100/70 text-amber-700",
   competitor: "bg-rose-100/70 text-rose-700",
   partner: "bg-sky-100/70 text-sky-700",
-};
-
-const communicationStatusLabel: Record<CommunicationStatus, string> = {
-  none: "Без коммуникации",
-  refused: "Отказ",
-  in_progress: "В работе",
-  success: "Завершено удачно",
-};
-
-const communicationStatusTone: Record<CommunicationStatus, string> = {
-  none: "bg-slate-100/70 text-slate-600",
-  refused: "bg-rose-100/70 text-rose-700",
-  in_progress: "bg-amber-100/70 text-amber-700",
-  success: "bg-emerald-100/70 text-emerald-700",
 };
 
 const columnsOrderDefault = [
@@ -234,10 +220,47 @@ const SAMPLE_DEALS: NonNullable<ClientRecord["deals"]> = [
   },
 ];
 
+const SOURCE_CHANNELS = ["Сайт", "Рекомендация", "Выставка", "Холодный звонок", "Партнер"] as const;
 const MOCK_ACTIVITIES = ["Аптеки", "Банки", "Прачечная", "HoReCa", "Строительство", "Ритейл"];
 const MOCK_PRODUCTS = ["Канцелярия", "Одежда", "Игрушки", "Медтовары", "Техника"];
 const MOCK_REGIONS = ["Киевская", "Львовская", "Одесская", "Харьковская", "Днепр"];
 const MOCK_CITIES = ["Киев", "Львов", "Одесса", "Харьков", "Днепр"];
+const CONTACT_FIRST_NAMES = [
+  "Ольга",
+  "Ирина",
+  "Анна",
+  "Марина",
+  "Наталья",
+  "Тарас",
+  "Олег",
+  "Дмитрий",
+  "Андрей",
+  "Сергей",
+];
+const CONTACT_LAST_NAMES = [
+  "Иванова",
+  "Коваленко",
+  "Петренко",
+  "Шевченко",
+  "Мельник",
+  "Бондаренко",
+  "Козак",
+  "Гриценко",
+  "Савченко",
+  "Полещук",
+];
+const CONTACT_POSITIONS = [
+  "Закупки",
+  "Бухгалтер",
+  "Операционный менеджер",
+  "Директор",
+  "Коммерческий директор",
+  "Менеджер по закупкам",
+  "Логистика",
+  "Финансовый менеджер",
+  "Секретарь",
+  "Администратор",
+];
 
 const randomFrom = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
 const randomBool = (chance = 0.5) => Math.random() < chance;
@@ -245,6 +268,20 @@ const randomPhone = () =>
   `+380 ${Math.floor(50 + Math.random() * 49)} ${Math.floor(100 + Math.random() * 900)} ${Math.floor(
     10 + Math.random() * 90
   )} ${Math.floor(10 + Math.random() * 90)}`;
+
+const buildMockContacts = (count: number): ClientContact[] =>
+  Array.from({ length: count }, (_, index) => {
+    const first = randomFrom(CONTACT_FIRST_NAMES);
+    const last = randomFrom(CONTACT_LAST_NAMES);
+    const name = `${first} ${last}`;
+    return {
+      id: `mock-contact-${Date.now()}-${index}`,
+      name,
+      position: randomFrom(CONTACT_POSITIONS),
+      phones: [randomPhone()],
+      emails: [`contact${index + 1}@example.com`],
+    };
+  });
 
 const toDate = (value?: Date | string | null) =>
   value ? (value instanceof Date ? value : parseISO(String(value))) : null;
@@ -310,6 +347,9 @@ const buildMockClients = (count: number, employees: { id: string; name: string }
     const nextCommunicationAt = randomBool(0.5)
       ? new Date(Date.now() + Math.floor(Math.random() * 10) * 86400000)
       : null;
+    const sourceChannel = randomFrom([...SOURCE_CHANNELS]);
+    const contactCount = 2 + Math.floor(Math.random() * 3);
+    const contacts = buildMockContacts(contactCount);
 
     result.push({
       id: `mock-${i}`,
@@ -324,6 +364,7 @@ const buildMockClients = (count: number, employees: { id: string; name: string }
       productCategory,
       clientType,
       status: randomFrom(COMMUNICATION_STATUS),
+      sourceChannel,
       lastCommunicationAt,
       nextCommunicationAt,
       lastComment: randomBool(0.4) ? "Запросили презентацию." : "—",
@@ -332,6 +373,7 @@ const buildMockClients = (count: number, employees: { id: string; name: string }
       ownerId: responsible?.id,
       ownerName: responsible?.name,
       starred: randomBool(0.25),
+      contacts,
     });
   }
   return result;
@@ -364,6 +406,7 @@ const mapClientFromStore = (
     productCategory: client.productCategory,
     clientType: client.clientType,
     status: client.communicationStatus,
+    sourceChannel: client.sourceChannel,
     lastCommunicationAt: client.lastCommunicationAt ?? null,
     nextCommunicationAt: client.nextContactAt ?? null,
     lastComment: getLastCommentText(client),
@@ -548,6 +591,18 @@ const ClientsPage = () => {
     currentUserId,
   ]);
 
+  const PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  useEffect(() => {
+    setVisibleCount(Math.min(PAGE_SIZE, filteredClients.length));
+  }, [filteredClients]);
+
+  const visibleClients = useMemo(
+    () => filteredClients.slice(0, visibleCount),
+    [filteredClients, visibleCount]
+  );
+
   const counts = useMemo(() => {
     return {
       all: allClients.length,
@@ -667,6 +722,7 @@ const ClientsPage = () => {
             onClick={(event) => {
               event.stopPropagation();
               const email = row.original.email || "";
+              if (!email) return;
               navigator.clipboard.writeText(email);
               toast({ title: "Email скопирован", description: email });
             }}
@@ -687,7 +743,8 @@ const ClientsPage = () => {
             onClick={(event) => {
               event.stopPropagation();
               const url = row.original.website;
-              if (url) window.open(url.startsWith("http") ? url : `https://${url}`, "_blank");
+              if (!url) return;
+              window.open(url.startsWith("http") ? url : `https://${url}`, "_blank");
             }}
           >
             <Globe className="h-4 w-4" />
@@ -770,7 +827,7 @@ const ClientsPage = () => {
   }, [updateClient, updateMockClient]);
 
   const table = useReactTable({
-    data: filteredClients,
+    data: visibleClients,
     columns,
     state: {
       columnVisibility,
@@ -987,6 +1044,12 @@ const ClientsPage = () => {
             <div
               ref={tableContainerRef}
               className="h-[605px] w-full min-w-0 overflow-x-auto overflow-y-auto custom-scrollbar"
+              onScroll={(event) => {
+                const target = event.currentTarget;
+                if (target.scrollTop + target.clientHeight >= target.scrollHeight - 120) {
+                  setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, filteredClients.length));
+                }
+              }}
             >
               <table className="service-table min-w-full">
                 <thead className="sticky top-0 z-10">
@@ -1252,11 +1315,12 @@ const AddClientDialog = ({
     region: "",
     city: "",
     activityType: "",
+    productCategory: "",
     email: "",
     website: "",
     clientType: "client" as ClientType,
+    sourceChannel: "",
   });
-  const [products, setProducts] = useState<string[]>([]);
   const [contacts, setContacts] = useState<
     { id: string; fullName: string; role: string; phones: string; emails: string }[]
   >([
@@ -1274,11 +1338,12 @@ const AddClientDialog = ({
         region: "",
         city: "",
         activityType: "",
+        productCategory: "",
         email: "",
         website: "",
         clientType: "client",
+        sourceChannel: "",
       });
-      setProducts([]);
       setContacts([{ id: "contact-1", fullName: "", role: "", phones: "", emails: "" }]);
     }
   }, [open]);
@@ -1334,31 +1399,21 @@ const AddClientDialog = ({
               ))}
             </SelectContent>
           </Select>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" className="justify-between">
-                {products.length ? `Продукция (${products.length})` : "Продукция"}
-                <ChevronRight className="h-4 w-4 rotate-90" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56">
+          <Select
+            value={form.productCategory}
+            onValueChange={(value) => setForm((prev) => ({ ...prev, productCategory: value }))}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Продукция" />
+            </SelectTrigger>
+            <SelectContent>
               {safeProducts.map((option) => (
-                <DropdownMenuCheckboxItem
-                  key={option}
-                  checked={products.includes(option)}
-                  onCheckedChange={() =>
-                    setProducts((prev) =>
-                      prev.includes(option)
-                        ? prev.filter((item) => item !== option)
-                        : [...prev, option]
-                    )
-                  }
-                >
+                <SelectItem key={option} value={option}>
                   {option}
-                </DropdownMenuCheckboxItem>
+                </SelectItem>
               ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </SelectContent>
+          </Select>
           <Input
             placeholder="Почта"
             value={form.email}
@@ -1369,6 +1424,21 @@ const AddClientDialog = ({
             value={form.website}
             onChange={(event) => setForm((prev) => ({ ...prev, website: event.target.value }))}
           />
+          <Select
+            value={form.sourceChannel}
+            onValueChange={(value) => setForm((prev) => ({ ...prev, sourceChannel: value }))}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Канал привлечения" />
+            </SelectTrigger>
+            <SelectContent>
+              {SOURCE_CHANNELS.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select
             value={form.clientType}
             onValueChange={(value) => setForm((prev) => ({ ...prev, clientType: value as ClientType }))}
@@ -1483,9 +1553,10 @@ const AddClientDialog = ({
                 region: form.region,
                 city: form.city,
                 activityType: form.activityType,
-                productCategory: products.join(", "),
+                productCategory: form.productCategory,
                 website: form.website,
                 clientType: form.clientType,
+                sourceChannel: form.sourceChannel,
                 communicationStatus: "none",
                 nextContactAt: null,
                 lastCommunicationAt: null,
@@ -1560,7 +1631,6 @@ const ClientDetailSheet = ({
   const deals = client.deals && client.deals.length ? client.deals : SAMPLE_DEALS;
   const contactList = client.contacts ?? [];
   const communications = client.communications ?? [];
-  const communicationPreview = communications.slice(0, 3);
   const responsible = employees.find((emp) => emp.id === (client.responsibleId || client.ownerId));
   const tabs = [
     {
@@ -1574,12 +1644,6 @@ const ClientDetailSheet = ({
       label: "Коммуникации",
       hint: "Лента и заметки",
       icon: MessageCircle,
-    },
-    {
-      value: "files",
-      label: "Файлы",
-      hint: "Документы клиента",
-      icon: FolderOpen,
     },
   ];
 
@@ -1629,6 +1693,7 @@ const ClientDetailSheet = ({
         clientType: draft.clientType,
         responsibleId: draft.responsibleId,
         communicationStatus: draft.status,
+        sourceChannel: draft.sourceChannel,
       };
       const trimmedNote = note.trim();
       if (trimmedNote && trimmedNote !== (client.lastComment ?? "").trim()) {
@@ -1650,9 +1715,14 @@ const ClientDetailSheet = ({
         if (!next) setIsEditing(false);
       }}
     >
-      <DialogContent className="client-details-modal modal-surface w-[min(96vw,1280px)] max-w-6xl max-h-[90vh] overflow-y-auto rounded-[28px] p-6">
-        <div className="space-y-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+      <DialogContent className="client-details-modal modal-surface flex max-h-[90vh] w-[min(96vw,1280px)] max-w-6xl flex-col overflow-hidden rounded-[28px] p-6 bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-100/50 !translate-x-[-50%] !translate-y-[-50%]">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-sky-200/40 blur-3xl" />
+          <div className="absolute top-32 -left-24 h-72 w-72 rounded-full bg-rose-200/30 blur-3xl" />
+          <div className="absolute bottom-0 right-24 h-56 w-56 rounded-full bg-emerald-200/30 blur-3xl" />
+        </div>
+        <div className="relative flex min-h-0 flex-col gap-6">
+          <div className="glass-panel rounded-[24px] p-4 sm:p-5 flex flex-wrap items-start justify-between gap-4 animate-fade-up">
             <div className="min-w-[240px] space-y-2">
               {isEditing ? (
                 <div className="space-y-2">
@@ -1693,17 +1763,17 @@ const ClientDetailSheet = ({
                   <p className="text-sm text-muted-foreground">{metaLine || "Карточка клиента"}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {client.clientType && (
-                      <Badge className={cn("text-xs", clientTypeTone[client.clientType])}>
+                      <Badge className={cn("text-xs shadow-sm", clientTypeTone[client.clientType])}>
                         {clientTypeLabel[client.clientType]}
                       </Badge>
                     )}
                     {client.activityType && (
-                      <Badge variant="secondary" className="text-xs">
+                      <Badge variant="secondary" className="text-xs shadow-sm">
                         {client.activityType}
                       </Badge>
                     )}
                     {client.productCategory && (
-                      <Badge variant="secondary" className="text-xs">
+                      <Badge variant="secondary" className="text-xs shadow-sm">
                         {client.productCategory}
                       </Badge>
                     )}
@@ -1723,20 +1793,22 @@ const ClientDetailSheet = ({
             ) : null}
           </div>
 
-          <Tabs defaultValue="deals">
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.65fr,0.95fr]">
-              <div className="space-y-4">
-                <TabsList className="grid h-auto w-full grid-cols-1 gap-3 bg-transparent p-0 sm:grid-cols-3">
+          <Tabs defaultValue="deals" className="flex min-h-0 flex-1 flex-col">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 xl:grid-cols-[1.65fr,0.95fr]">
+              <div className="flex min-h-0 flex-col">
+                <TabsList className="grid h-auto w-full shrink-0 grid-cols-1 gap-3 bg-transparent p-0 sm:grid-cols-2 animate-fade-up">
                   {tabs.map((tab) => {
                     const Icon = tab.icon;
                     return (
                       <TabsTrigger
                         key={tab.value}
                         value={tab.value}
-                        className="group h-auto w-full flex-col items-start justify-start gap-2 rounded-[18px] border border-transparent bg-white/70 px-4 py-3 text-left text-foreground shadow-sm transition hover:bg-white/90 data-[state=active]:border-primary/40 data-[state=active]:bg-white data-[state=active]:shadow-md"
+                        className="group h-auto w-full flex-col items-start justify-start gap-2 rounded-[18px] border border-transparent bg-white/70 px-4 py-3 text-left text-foreground shadow-sm transition hover:-translate-y-0.5 hover:bg-white/90 data-[state=active]:border-primary/40 data-[state=active]:bg-white data-[state=active]:shadow-lg"
                       >
                         <div className="flex items-center gap-2 text-sm font-semibold">
-                          <Icon className="h-4 w-4 text-primary" />
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-sky-600 shadow-inner">
+                            <Icon className="h-4 w-4" />
+                          </span>
                           {tab.label}
                         </div>
                         <span className="text-xs text-muted-foreground">{tab.hint}</span>
@@ -1745,6 +1817,7 @@ const ClientDetailSheet = ({
                   })}
                 </TabsList>
 
+                <div className="mt-4 flex-1 min-h-0 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
                 <TabsContent value="deals" className="mt-0 space-y-4">
                   <InfoCard title="Сделки">
                     <div className="overflow-x-auto">
@@ -1848,46 +1921,11 @@ const ClientDetailSheet = ({
                   />
                 </TabsContent>
 
-                <TabsContent value="files" className="mt-0">
-                  <InfoCard title="Файлы">
-                    <p className="text-sm text-muted-foreground">
-                      Нет загруженных файлов. Добавьте документы клиента.
-                    </p>
-                  </InfoCard>
-                </TabsContent>
+                </div>
               </div>
 
-              <div className="space-y-4">
-                <InfoCard
-                  title="Коммуникация"
-                  titleAddon={
-                    client.status ? (
-                      <Badge className={cn("text-xs", communicationStatusTone[client.status])}>
-                        {communicationStatusLabel[client.status]}
-                      </Badge>
-                    ) : null
-                  }
-                >
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <InfoRow label="Следующая связь" value={formatDateTime(client.nextCommunicationAt)} />
-                    <InfoRow label="Последняя связь" value={formatDateTime(client.lastCommunicationAt)} />
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    <p className="text-xs text-muted-foreground">Ближайшие коммуникации</p>
-                    {communicationPreview.length ? (
-                      communicationPreview.map((item) => (
-                        <div key={item.id} className="rounded-xl bg-white/70 px-3 py-2 text-xs">
-                          <p className="font-medium">{formatDateTime(item.scheduledAt)}</p>
-                          <p className="text-muted-foreground">{item.note || "Без заметки"}</p>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Нет запланированных коммуникаций.</p>
-                    )}
-                  </div>
-                </InfoCard>
-
-                <InfoCard title="Ответственный">
+              <div className="space-y-4 min-h-0 overflow-y-auto pr-2 custom-scrollbar">
+                <InfoCard title="Ответственный" className="animate-fade-up">
                   {responsible ? (
                     <div className="space-y-3">
                       <div className="flex items-center gap-3">
@@ -1900,21 +1938,33 @@ const ClientDetailSheet = ({
                         </div>
                       </div>
                       {responsible.email && (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-white/70 px-3 py-1 text-xs text-muted-foreground shadow-sm transition hover:bg-white hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          onClick={() => {
+                            navigator.clipboard.writeText(responsible.email || "");
+                            toast({ title: "Email скопирован", description: responsible.email });
+                          }}
+                        >
                           <Mail className="h-3.5 w-3.5" />
                           <span>{responsible.email}</span>
-                        </div>
+                        </button>
                       )}
                       {responsible.phones?.length ? (
                         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                           {responsible.phones.map((phone) => (
-                            <span
+                            <button
                               key={phone}
-                              className="inline-flex items-center gap-1 rounded-full bg-white/70 px-2 py-1"
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-white/70 px-3 py-1 shadow-sm transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
+                              onClick={() => {
+                                navigator.clipboard.writeText(phone);
+                                toast({ title: "Телефон скопирован", description: phone });
+                              }}
                             >
                               <Phone className="h-3 w-3" />
                               {phone}
-                            </span>
+                            </button>
                           ))}
                         </div>
                       ) : null}
@@ -1924,40 +1974,48 @@ const ClientDetailSheet = ({
                   )}
                 </InfoCard>
 
-                <InfoCard title={`Контактные лица (${contactList.length})`}>
-                  {contactList.length ? (
-                    <div className="space-y-3">
-                      {contactList.map((contact) => (
-                        <div key={contact.id} className="rounded-2xl border border-border/60 bg-white/70 p-3">
-                          <div className="flex items-start gap-3">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-xs font-semibold text-primary">
-                              {getInitials(contact.name)}
-                            </div>
-                            <div className="flex-1 space-y-1">
-                              <p className="text-sm font-semibold">{contact.name}</p>
-                              <p className="text-xs text-muted-foreground">{contact.position || "—"}</p>
-                              <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                                {contact.phones.map((phone) => (
-                                  <div key={phone} className="flex items-center gap-2">
-                                    <Phone className="h-3.5 w-3.5" />
-                                    <span>{phone}</span>
+                <InfoCard title={`Контактные лица (${contactList.length})`} className="animate-fade-up">
+                  <Collapsible defaultOpen={false}>
+                    <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl border border-border/60 bg-white/70 px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:bg-white">
+                      Показать контакты
+                      <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-3 space-y-3">
+                      {contactList.length ? (
+                        <div className="space-y-3">
+                          {contactList.map((contact) => (
+                            <div key={contact.id} className="rounded-2xl border border-border/60 bg-white/70 p-3">
+                              <div className="flex items-start gap-3">
+                                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-xs font-semibold text-primary">
+                                  {getInitials(contact.name)}
+                                </div>
+                                <div className="flex-1 space-y-1">
+                                  <p className="text-sm font-semibold">{contact.name}</p>
+                                  <p className="text-xs text-muted-foreground">{contact.position || "—"}</p>
+                                  <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                                    {contact.phones.map((phone) => (
+                                      <div key={phone} className="flex items-center gap-2">
+                                        <Phone className="h-3.5 w-3.5" />
+                                        <span>{phone}</span>
+                                      </div>
+                                    ))}
+                                    {contact.emails.map((email) => (
+                                      <div key={email} className="flex items-center gap-2">
+                                        <Mail className="h-3.5 w-3.5" />
+                                        <span>{email}</span>
+                                      </div>
+                                    ))}
                                   </div>
-                                ))}
-                                {contact.emails.map((email) => (
-                                  <div key={email} className="flex items-center gap-2">
-                                    <Mail className="h-3.5 w-3.5" />
-                                    <span>{email}</span>
-                                  </div>
-                                ))}
+                                </div>
                               </div>
                             </div>
-                          </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Контактов нет.</p>
-                  )}
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Контактов нет.</p>
+                      )}
+                    </CollapsibleContent>
+                  </Collapsible>
                 </InfoCard>
 
                 <InfoCard title="Информация о компании">
@@ -2012,6 +2070,27 @@ const ClientDetailSheet = ({
                         />
                       </div>
                       <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Канал привлечения</p>
+                        <Select
+                          value={draft.sourceChannel ?? "none"}
+                          onValueChange={(value) =>
+                            updateDraft("sourceChannel", value === "none" ? undefined : value)
+                          }
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Канал привлечения" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Не выбран</SelectItem>
+                            {SOURCE_CHANNELS.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
                         <p className="text-xs text-muted-foreground">Телефон</p>
                         <Input
                           className="h-9"
@@ -2050,6 +2129,8 @@ const ClientDetailSheet = ({
                       <InfoRow label="Телефон" value={client.phone || "—"} />
                       <InfoRow label="Почта" value={client.email || "—"} />
                       <InfoRow label="Сайт" value={client.website || "—"} />
+                      <InfoRow label="Канал привлечения" value={client.sourceChannel || "—"} />
+                      <InfoRow label="Ответственный" value={client.responsibleName || "—"} />
                     </>
                   )}
                 </InfoCard>
@@ -2073,7 +2154,7 @@ const InfoCard = ({
   className?: string;
   children: React.ReactNode;
 }) => (
-  <div className={cn("glass-card rounded-[20px] p-4", className)}>
+  <div className={cn("glass-card rounded-[20px] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg", className)}>
     <div className="mb-3 flex items-center justify-between gap-2">
       <div className="text-sm font-semibold">{title}</div>
       {titleAddon}

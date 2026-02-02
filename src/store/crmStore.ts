@@ -333,11 +333,25 @@ const initialClients: Client[] = [
     sourceChannel: 'Website',
     contacts: [
       {
-        id: 'contact-2',
+        id: 'contact-2-1',
         name: 'Aaron Cole',
         position: 'Operations',
         phones: ['+1-555-0188'],
         emails: ['ops@sarahsupplies.com'],
+      },
+      {
+        id: 'contact-2-2',
+        name: 'Linda Perez',
+        position: 'Purchasing Manager',
+        phones: ['+1-555-0189'],
+        emails: ['linda.perez@sarahsupplies.com'],
+      },
+      {
+        id: 'contact-2-3',
+        name: 'Brian Stone',
+        position: 'Finance',
+        phones: ['+1-555-0190'],
+        emails: ['b.stone@sarahsupplies.com'],
       },
     ],
     comments: [
@@ -373,7 +387,29 @@ const initialClients: Client[] = [
     isFavorite: false,
     responsibleId: '1',
     sourceChannel: 'Cold outreach',
-    contacts: [],
+    contacts: [
+      {
+        id: 'contact-3-1',
+        name: 'Olena Kovalenko',
+        position: 'CEO',
+        phones: ['+1-555-0211'],
+        emails: ['olena@startupxyz.com'],
+      },
+      {
+        id: 'contact-3-2',
+        name: 'Dmytro Hnatyuk',
+        position: 'Head of Procurement',
+        phones: ['+1-555-0212'],
+        emails: ['procurement@startupxyz.com'],
+      },
+      {
+        id: 'contact-3-3',
+        name: 'Yulia Markova',
+        position: 'Accountant',
+        phones: ['+1-555-0213'],
+        emails: ['accounting@startupxyz.com'],
+      },
+    ],
     comments: [
       {
         id: 'comment-3',
@@ -408,11 +444,25 @@ const initialClients: Client[] = [
     sourceChannel: 'Event',
     contacts: [
       {
-        id: 'contact-4',
+        id: 'contact-4-1',
         name: 'Mark Davis',
         position: 'Owner',
-        phones: ['+1-555-0155', '+1-555-0156'],
+        phones: ['+1-555-0155'],
         emails: ['mark@emilyretail.com'],
+      },
+      {
+        id: 'contact-4-2',
+        name: 'Sophia Reed',
+        position: 'Sales Lead',
+        phones: ['+1-555-0156'],
+        emails: ['s.reed@emilyretail.com'],
+      },
+      {
+        id: 'contact-4-3',
+        name: 'Ivan Petrov',
+        position: 'Operations',
+        phones: ['+1-555-0157'],
+        emails: ['ops@emilyretail.com'],
       },
     ],
     comments: [
@@ -450,11 +500,25 @@ const initialClients: Client[] = [
     sourceChannel: 'Partner',
     contacts: [
       {
-        id: 'contact-5',
+        id: 'contact-5-1',
         name: 'Linda Stone',
         position: 'Procurement',
         phones: ['+1-555-0177'],
         emails: ['lstone@enterprise.com'],
+      },
+      {
+        id: 'contact-5-2',
+        name: 'Michael Grant',
+        position: 'Logistics',
+        phones: ['+1-555-0178'],
+        emails: ['m.grant@enterprise.com'],
+      },
+      {
+        id: 'contact-5-3',
+        name: 'Iryna Koval',
+        position: 'Finance',
+        phones: ['+1-555-0179'],
+        emails: ['ikoval@enterprise.com'],
       },
     ],
     comments: [
@@ -767,7 +831,7 @@ const mergeClientWithSeed = (client: Client) => {
   if ((!merged.addresses || merged.addresses.length === 0) && seed.addresses?.length) {
     merged.addresses = seed.addresses;
   }
-  if ((!merged.contacts || merged.contacts.length === 0) && seed.contacts?.length) {
+  if ((!merged.contacts || merged.contacts.length < 2) && seed.contacts?.length) {
     merged.contacts = seed.contacts;
   }
   if ((!merged.comments || merged.comments.length === 0) && seed.comments?.length) {
@@ -1067,7 +1131,7 @@ export const useCRMStore = create<CRMState>()(
     }),
     {
       name: 'crm-storage',
-      version: 5,
+      version: 6,
       migrate: (state) => {
         if (!state || typeof state !== 'object') return state as CRMState;
         const typedState = state as CRMState;

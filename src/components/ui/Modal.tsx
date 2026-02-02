@@ -33,35 +33,47 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', scrollabl
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+      <div
+        className="absolute inset-0 bg-black/45 backdrop-blur-[6px]"
         onClick={onClose}
       />
-      
+
       {/* Modal */}
-      <div className={cn(
-        "relative w-full mx-4 modal-surface rounded-2xl shadow-2xl animate-scale-in",
-        sizeClasses[size]
-      )}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border/60">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <button
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors"
-          >
-            <X className="h-4 w-4 text-muted-foreground" />
-          </button>
+      <div
+        className={cn(
+          "relative w-full mx-auto modal-surface crm-dialog overflow-visible rounded-[24px] shadow-2xl animate-scale-in",
+          sizeClasses[size]
+        )}
+      >
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-20 -right-20 h-56 w-56 rounded-full bg-sky-200/40 blur-3xl" />
+          <div className="absolute top-24 -left-24 h-64 w-64 rounded-full bg-rose-200/30 blur-3xl" />
+          <div className="absolute bottom-0 right-10 h-48 w-48 rounded-full bg-emerald-200/30 blur-3xl" />
         </div>
-        
-        {/* Content */}
-        <div className={cn(
+
+        <div className="relative">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-white/60 bg-white/70 backdrop-blur-md">
+            <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+            <button
+              onClick={onClose}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/60 bg-white/80 text-muted-foreground shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div
+            className={cn(
           "px-6 pt-4 pb-0",
-          scrollable ? "max-h-[720px] overflow-y-auto no-scrollbar" : "overflow-visible"
-        )}>
-          {children}
+          scrollable ? "max-h-[720px] overflow-y-auto overflow-x-visible no-scrollbar" : "overflow-visible"
+        )}
+          >
+            {children}
+          </div>
         </div>
       </div>
     </div>
