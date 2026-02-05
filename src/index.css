@@ -697,6 +697,28 @@
     transform: scale(0.97);
   }
 
+  .clients-fab {
+    position: absolute;
+    right: 17px;
+    bottom: 0px;
+    z-index: 30;
+    height: 3.5rem;
+    width: 3.5rem;
+    border-radius: 18px;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.2);
+  }
+
+  .clients-fab:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 20px 36px rgba(15, 23, 42, 0.24);
+  }
+
   @media (max-width: 640px) {
     .fab {
       right: 16px;

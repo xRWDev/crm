@@ -999,7 +999,7 @@ const ClientsPage = () => {
 
         </aside>
 
-        <section className="space-y-4 min-w-0">
+        <section className="space-y-4 min-w-0 relative">
           <div className="glass-card rounded-[22px] p-4 sticky top-2 z-20">
             <div className="flex flex-wrap items-center gap-4">
               <div className="min-w-0 mr-auto">
@@ -1032,18 +1032,14 @@ const ClientsPage = () => {
                     }))
                   }
                 />
-                <Button onClick={() => setIsAddOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  Добавить клиента
-                </Button>
               </div>
             </div>
           </div>
 
-          <div className="glass-card rounded-[22px] p-4 overflow-hidden">
+          <div className="glass-card rounded-[22px] p-4 overflow-hidden relative">
             <div
               ref={tableContainerRef}
-              className="h-[605px] w-full min-w-0 overflow-x-auto overflow-y-auto custom-scrollbar"
+              className="h-[549px] w-full min-w-0 overflow-x-auto overflow-y-auto custom-scrollbar"
               onScroll={(event) => {
                 const target = event.currentTarget;
                 if (target.scrollTop + target.clientHeight >= target.scrollHeight - 120) {
@@ -1113,10 +1109,11 @@ const ClientsPage = () => {
                 </tbody>
               </table>
             </div>
+
           </div>
 
-          <div className="sticky bottom-4 z-10">
-            <div className="glass-card rounded-[22px] px-4 py-3 flex items-center gap-3">
+          <div className="sticky bottom-2 z-10">
+            <div className="glass-card rounded-[22px] px-4 flex items-center gap-3 h-[42px] w-[1232px]">
               <Search className="h-4 w-4 text-muted-foreground" />
               <input
                 className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
@@ -1126,6 +1123,10 @@ const ClientsPage = () => {
               />
             </div>
           </div>
+
+          <button className="clients-fab" onClick={() => setIsAddOpen(true)} aria-label="Добавить клиента">
+            <Plus className="h-5 w-5" />
+          </button>
 
         </section>
       </div>
@@ -2272,7 +2273,7 @@ const NotificationsStack = ({
   items: { id: string; title: string; text: string; time: string }[];
   onDismiss: (id: string) => void;
 }) => (
-  <div className="fixed bottom-6 right-6 z-[60] flex flex-col gap-3">
+  <div className="fixed bottom-6 right-6 z-[220] flex flex-col gap-3">
     <AnimatePresence>
       {items.map((item) => (
         <motion.div
