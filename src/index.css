@@ -752,39 +752,26 @@
   }
 
   /* Smooth scrollbar */
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-    border-radius: 999px;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, hsl(214 24% 78% / 0.7), hsl(220 12% 68% / 0.45));
-    border-radius: 999px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, hsl(214 24% 70% / 0.8), hsl(220 12% 58% / 0.6));
-  }
-
   .custom-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: hsl(220 12% 68% / 0.45) transparent;
+    scrollbar-width: none;
+    scrollbar-color: transparent transparent;
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
+    -ms-overflow-style: none;
   }
 
-  .custom-scrollbar::-webkit-scrollbar-button {
+  .custom-scrollbar::-webkit-scrollbar {
     width: 0;
     height: 0;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track,
+  .custom-scrollbar::-webkit-scrollbar-thumb,
+  .custom-scrollbar::-webkit-scrollbar-button {
+    background: transparent;
+    border: 0;
   }
 
   .floating-scrollbar::-webkit-scrollbar {
@@ -1215,6 +1202,11 @@
     box-shadow: 0 12px 22px rgba(15, 23, 42, 0.12);
   }
 
+  .contacts-preview.is-open {
+    box-shadow: 0 16px 26px rgba(15, 23, 42, 0.16);
+    border-color: rgba(96, 165, 250, 0.35);
+  }
+
   .contacts-preview__row {
     display: flex;
     flex-direction: column;
@@ -1258,6 +1250,65 @@
     font-size: 11px;
     font-weight: 700;
   }
+
+  .contacts-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .contacts-expand {
+    width: 100%;
+    max-width: 280px;
+    overflow: hidden;
+    will-change: height, opacity, transform;
+  }
+
+  .contacts-expand__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 2px 2px 0;
+  }
+
+  .contacts-expand__item {
+    border-radius: 14px;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    background: #f8fafc;
+    padding: 8px 10px;
+    font-size: 12px;
+    text-align: left;
+  }
+
+  .contacts-expand__item-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .contacts-expand__item-name {
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .contacts-expand__item-role {
+    font-size: 11px;
+    color: #64748b;
+  }
+
+  .contacts-expand__item-phone {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
 
   .contacts-popover {
     position: fixed;

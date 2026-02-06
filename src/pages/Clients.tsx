@@ -489,6 +489,7 @@ const ClientsPage = () => {
   const [cityFilter, setCityFilter] = useState<string | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
 
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -724,7 +725,16 @@ const ClientsPage = () => {
         id: "contacts",
         header: () => <span className="text-xs uppercase tracking-[0.18em]">Контакты</span>,
         cell: ({ row }) => {
-          return <ContactsCell contacts={row.original.contacts ?? []} />;
+          const clientId = row.original.id;
+          return (
+            <ContactsCell
+              contacts={row.original.contacts ?? []}
+              isOpen={expandedContactId === clientId}
+              onToggle={() =>
+                setExpandedContactId((prev) => (prev === clientId ? null : clientId))
+              }
+            />
+          );
         },
       },
       {
@@ -1168,8 +1178,11 @@ const ClientsPage = () => {
                     return (
                       <motion.tr
                         key={row.id}
+                        data-index={virtualRow.index}
+                        ref={virtualizer.measureElement}
                         layout
                         initial={false}
+                        transition={{ type: "spring", stiffness: 120, damping: 26, mass: 0.7 }}
                         className={cn(
                           "group transition-colors"
                         )}
@@ -1325,156 +1338,78 @@ const FilterRow = ({
 const clampValue = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
-const ContactsCell = ({ contacts }: { contacts: ClientContact[] }) => {
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState<{ left: number; top: number; side: "top" | "bottom" }>({
-    left: 0,
-    top: 0,
-    side: "bottom",
-  });
-
-  const previewContacts = useMemo(() => (contacts.length ? [contacts[0]] : []), [contacts]);
-
-  const updatePosition = () => {
-    const trigger = triggerRef.current;
-    const popover = popoverRef.current;
-    if (!trigger || !popover) return;
-    const rect = trigger.getBoundingClientRect();
-    const popWidth = popover.offsetWidth;
-    const popHeight = popover.offsetHeight;
-    const padding = 12;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-
-    let left = rect.left + rect.width / 2 - popWidth / 2;
-    left = clampValue(left, padding, Math.max(padding, viewportWidth - popWidth - padding));
-
-    let top = rect.bottom + 10;
-    let side: "top" | "bottom" = "bottom";
-    if (top + popHeight > viewportHeight - padding) {
-      top = rect.top - popHeight - 10;
-      side = "top";
-    }
-    if (top < padding) {
-      top = padding;
-    }
-
-    setPosition({ left, top, side });
-  };
-
-  useLayoutEffect(() => {
-    if (!open) return;
-    updatePosition();
-  }, [open, contacts.length]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (popoverRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    const handleScroll = () => updatePosition();
-    document.addEventListener("mousedown", handleOutside);
-    document.addEventListener("keydown", handleKey);
-    window.addEventListener("resize", handleScroll);
-    window.addEventListener("scroll", handleScroll, true);
-    return () => {
-      document.removeEventListener("mousedown", handleOutside);
-      document.removeEventListener("keydown", handleKey);
-      window.removeEventListener("resize", handleScroll);
-      window.removeEventListener("scroll", handleScroll, true);
-    };
-  }, [open]);
+const ContactsCell = ({
+  contacts,
+  isOpen,
+  onToggle,
+}: {
+  contacts: ClientContact[];
+  isOpen: boolean;
+  onToggle: () => void;
+}) => {
+  const previewContact = contacts[0];
+  const extraContacts = contacts.slice(1);
 
   if (!contacts.length) {
     return <span className="text-sm text-foreground/60">—</span>;
   }
 
   return (
-    <>
+    <div className="contacts-cell">
       <button
-        ref={triggerRef}
         type="button"
-        className="contacts-preview"
+        className={cn("contacts-preview", isOpen && "is-open")}
         onClick={(event) => {
           event.stopPropagation();
-          setOpen((prev) => !prev);
+          if (!extraContacts.length) return;
+          onToggle();
         }}
-        aria-expanded={open}
+        aria-expanded={isOpen}
       >
-        <div className="space-y-1">
-          {previewContacts.map((contact) => {
-            const phones = contact.phones ?? [];
-            const primaryPhone = phones[0] ?? "—";
-            return (
-              <div key={contact.id} className="contacts-preview__row">
-                <div className="contacts-preview__name">
-                  <span className="truncate">{contact.name || "—"}</span>
-                  {contact.position && (
-                    <span className="contacts-preview__role">{contact.position}</span>
-                  )}
-                </div>
-                <span className="contacts-preview__phone">{primaryPhone}</span>
-              </div>
-            );
-          })}
+        <div className="contacts-preview__row">
+          <div className="contacts-preview__name">
+            <span className="truncate">{previewContact?.name || "—"}</span>
+            {previewContact?.position && (
+              <span className="contacts-preview__role">{previewContact.position}</span>
+            )}
+          </div>
+          <span className="contacts-preview__phone">{previewContact?.phones?.[0] || "—"}</span>
         </div>
         <span className="contacts-preview__count">{contacts.length}</span>
       </button>
 
-      {open && typeof document !== "undefined"
-        ? createPortal(
-            <div
-              ref={popoverRef}
-              className="contacts-popover"
-              data-side={position.side}
-              style={{ left: position.left, top: position.top }}
-            >
-              <div className="contacts-popover__header">
-                Контакты ({contacts.length})
-                <button
-                  type="button"
-                  className="contacts-popover__close"
-                  onClick={() => setOpen(false)}
-                  aria-label="Закрыть"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div className="contacts-popover__list">
-                {contacts.map((contact) => {
-                  const phones = contact.phones ?? [];
-                  const primaryPhone = phones[0] ?? "—";
-                  const extraPhones = phones.length > 1 ? `+${phones.length - 1}` : "";
-                  return (
-                    <div key={contact.id} className="contacts-popover__item">
-                      <div className="contacts-popover__item-row">
-                        <span className="contacts-popover__item-name">{contact.name || "—"}</span>
-                        {contact.position && (
-                          <span className="contacts-popover__item-role">{contact.position}</span>
-                        )}
-                      </div>
-                      <div className="contacts-popover__item-phone">
-                        {primaryPhone}
-                        {extraPhones && (
-                          <span className="contacts-popover__item-extra">{extraPhones}</span>
-                        )}
-                      </div>
+      <AnimatePresence initial={false}>
+        {extraContacts.length > 0 && isOpen && (
+          <motion.div
+            key="contacts-expand"
+            className="contacts-expand"
+            initial={{ height: 0, opacity: 0, y: -6 }}
+            animate={{ height: "auto", opacity: 1, y: 0 }}
+            exit={{ height: 0, opacity: 0, y: -6 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            style={{ overflow: "hidden" }}
+          >
+            <div className="contacts-expand__list custom-scrollbar">
+              {extraContacts.map((contact) => {
+                const phones = contact.phones ?? [];
+                const primaryPhone = phones[0] ?? "—";
+                return (
+                  <div key={contact.id} className="contacts-expand__item">
+                    <div className="contacts-expand__item-row">
+                      <span className="contacts-expand__item-name">{contact.name || "—"}</span>
+                      {contact.position && (
+                        <span className="contacts-expand__item-role">{contact.position}</span>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
-    </>
+                    <span className="contacts-expand__item-phone">{primaryPhone}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 };
 
