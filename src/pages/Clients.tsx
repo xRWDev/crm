@@ -1223,10 +1223,16 @@ const ClientsPage = () => {
 
           </div>
 
-          <div className="sticky bottom-2 z-10">
+          <div
+            className="sticky bottom-2 z-10"
+            style={{ width: filtersOpen ? "1313px" : "100%" }}
+          >
             <div className="flex items-center gap-3">
               <div
-                className="glass-card rounded-[22px] px-4 flex items-center gap-3 h-[42px] w-[1232px]"
+                className={cn(
+                  "glass-card rounded-[22px] px-4 flex items-center gap-3 h-[42px]",
+                  filtersOpen ? "w-[1232px]" : "flex-1 min-w-0"
+                )}
                 data-contacts-keep-open
               >
                 <Search className="h-4 w-4 text-muted-foreground" />
@@ -1238,14 +1244,19 @@ const ClientsPage = () => {
                   data-contacts-keep-open
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" size="sm" onClick={handleExportSelected}>
-                  <FileSpreadsheet className="h-4 w-4" />
-                  Экспорт
-                </Button>
-                <ColumnManager
-                  columnOrder={columnOrder}
-                  columnVisibility={columnVisibility}
+              <div
+                className={cn(
+                  "flex items-center gap-2 actions-safe",
+                  filtersOpen && "compact-actions"
+                )}
+              >
+              <Button variant="secondary" size="sm" onClick={handleExportSelected} className="action-btn">
+                <FileSpreadsheet className="h-4 w-4" />
+                <span className="action-label">Экспорт</span>
+              </Button>
+              <ColumnManager
+                columnOrder={columnOrder}
+                columnVisibility={columnVisibility}
                   onMove={(key, direction) => {
                     const index = columnOrder.indexOf(key);
                     if (index < 0) return;
@@ -1725,9 +1736,9 @@ const ColumnManager = ({
 }) => (
   <DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <Button variant="secondary" size="sm">
+      <Button variant="secondary" size="sm" className="action-btn">
         <SlidersHorizontal className="h-4 w-4" />
-        Колонки
+        <span className="action-label">Колонки</span>
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent className="w-64">
@@ -2890,40 +2901,52 @@ const NotificationsStack = ({
 }: {
   items: { id: string; title: string; text: string; time: string }[];
   onDismiss: (id: string) => void;
-}) => (
-  <div className="fixed bottom-6 right-6 z-[220] flex flex-col gap-3">
-    <AnimatePresence>
-      {items.map((item) => (
-        <motion.div
-          key={item.id}
-          initial={{ opacity: 0, y: 20, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 20, scale: 0.98 }}
-          className="glass-card rounded-[18px] p-4 w-[280px] shadow-lg"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-semibold">{item.title}</p>
-              <p className="text-xs text-muted-foreground">{item.text}</p>
-              <p className="text-xs text-muted-foreground mt-1">{item.time}</p>
+}) => {
+  useEffect(() => {
+    if (!items.length) return;
+    const timers = items.map((item) =>
+      window.setTimeout(() => onDismiss(item.id), 2000)
+    );
+    return () => {
+      timers.forEach((id) => window.clearTimeout(id));
+    };
+  }, [items, onDismiss]);
+
+  return (
+    <div className="fixed bottom-6 right-6 z-[220] flex flex-col gap-3">
+      <AnimatePresence>
+        {items.map((item) => (
+          <motion.div
+            key={item.id}
+            initial={{ opacity: 0, y: 20, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.98 }}
+            className="glass-card rounded-[18px] p-4 w-[280px] shadow-lg"
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-semibold">{item.title}</p>
+                <p className="text-xs text-muted-foreground">{item.text}</p>
+                <p className="text-xs text-muted-foreground mt-1">{item.time}</p>
+              </div>
+              <button onClick={() => onDismiss(item.id)} className="text-muted-foreground">
+                <X className="h-4 w-4" />
+              </button>
             </div>
-            <button onClick={() => onDismiss(item.id)} className="text-muted-foreground">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <Button size="sm" variant="secondary">
-              Открыть
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => onDismiss(item.id)}>
-              Скрыть
-            </Button>
-          </div>
-        </motion.div>
-      ))}
-    </AnimatePresence>
-  </div>
-);
+            <div className="mt-3 flex gap-2">
+              <Button size="sm" variant="secondary">
+                Открыть
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => onDismiss(item.id)}>
+                Скрыть
+              </Button>
+            </div>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 export default ClientsPage;
 

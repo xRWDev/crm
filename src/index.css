@@ -909,6 +909,36 @@
     @apply text-sm text-muted-foreground;
   }
 
+  .action-btn {
+    gap: 6px;
+  }
+
+  .action-label {
+    display: inline-block;
+    max-width: 120px;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 1;
+    transform: translateX(0);
+    transition: max-width 200ms ease, opacity 200ms ease, transform 200ms ease, margin 200ms ease;
+    margin-left: 2px;
+  }
+
+  .compact-actions .action-btn {
+    padding-inline: 10px;
+  }
+
+  .compact-actions .action-label {
+    max-width: 0;
+    opacity: 0;
+    transform: translateX(-4px);
+    margin-left: 0;
+  }
+
+  .actions-safe {
+    margin-right: 72px;
+  }
+
 
 
   /* Sidebar nav item */
