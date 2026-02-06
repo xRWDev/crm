@@ -1,5 +1,5 @@
 ﻿
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowDown,
@@ -908,6 +908,17 @@ const ClientsPage = () => {
     [allClients, selectedClientId]
   );
 
+  const handleTablePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!expandedContactId) return;
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest(".contacts-cell")) return;
+      setExpandedContactId(null);
+    },
+    [expandedContactId]
+  );
+
   const startSuppressOpen = () => {
     suppressOpenRef.current = true;
     if (suppressPointerCleanupRef.current) {
@@ -1138,6 +1149,7 @@ const ClientsPage = () => {
             <div
               ref={tableContainerRef}
               className="h-[649px] w-full min-w-0 overflow-x-auto overflow-y-auto custom-scrollbar"
+              onPointerMove={handleTablePointerMove}
               onScroll={(event) => {
                 const target = event.currentTarget;
                 if (target.scrollTop + target.clientHeight >= target.scrollHeight - 120) {
@@ -1182,10 +1194,8 @@ const ClientsPage = () => {
                         ref={virtualizer.measureElement}
                         layout
                         initial={false}
-                        transition={{ type: "spring", stiffness: 70, damping: 30, mass: 1.4 }}
-                        className={cn(
-                          "group transition-colors"
-                        )}
+                        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                        className={cn("group transition-colors")}
                       >
                         {row.getVisibleCells().map((cell) => (
                           <td
@@ -1215,13 +1225,17 @@ const ClientsPage = () => {
 
           <div className="sticky bottom-2 z-10">
             <div className="flex items-center gap-3">
-              <div className="glass-card rounded-[22px] px-4 flex items-center gap-3 h-[42px] w-[1232px]">
+              <div
+                className="glass-card rounded-[22px] px-4 flex items-center gap-3 h-[42px] w-[1232px]"
+                data-contacts-keep-open
+              >
                 <Search className="h-4 w-4 text-muted-foreground" />
                 <input
                   className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                   placeholder="Поиск клиента..."
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
+                  data-contacts-keep-open
                 />
               </div>
               <div className="flex items-center gap-2">
@@ -1428,8 +1442,9 @@ const ContactsCell = ({
   useEffect(() => {
     if (!isOpen) return;
     const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
+      const target = event.target as HTMLElement | null;
       if (!cellRef.current || !target) return;
+      if (target.closest("[data-contacts-keep-open]")) return;
       if (!cellRef.current.contains(target)) {
         onClose();
       }
@@ -1483,15 +1498,7 @@ const ContactsCell = ({
 
       <AnimatePresence initial={false}>
         {extraContacts.length > 0 && isOpen && (
-          <motion.div
-            key="contacts-expand"
-            className="contacts-expand"
-            initial={{ height: 0, opacity: 0, y: -3 }}
-            animate={{ height: "auto", opacity: 1, y: 0 }}
-            exit={{ height: 0, opacity: 0, y: -3 }}
-            transition={{ duration: 1.45, ease: [0.12, 1, 0.2, 1] }}
-            style={{ overflow: "hidden" }}
-          >
+          <div className="contacts-expand" style={{ overflow: "hidden" }}>
             <div ref={listRef} className="contacts-expand__list custom-scrollbar">
               {contacts.map((contact, index) => {
                 const isPreview = index === 0;
@@ -1538,7 +1545,7 @@ const ContactsCell = ({
                 );
               })}
             </div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
