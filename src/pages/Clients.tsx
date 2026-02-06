@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronRight,
+  Copy,
   FileSpreadsheet,
   Filter,
   Globe,
@@ -730,9 +731,8 @@ const ClientsPage = () => {
             <ContactsCell
               contacts={row.original.contacts ?? []}
               isOpen={expandedContactId === clientId}
-              onToggle={() =>
-                setExpandedContactId((prev) => (prev === clientId ? null : clientId))
-              }
+              onOpen={() => setExpandedContactId(clientId)}
+              onClose={() => setExpandedContactId(null)}
             />
           );
         },
@@ -1182,7 +1182,7 @@ const ClientsPage = () => {
                         ref={virtualizer.measureElement}
                         layout
                         initial={false}
-                        transition={{ type: "spring", stiffness: 120, damping: 26, mass: 0.7 }}
+                        transition={{ type: "spring", stiffness: 70, damping: 30, mass: 1.4 }}
                         className={cn(
                           "group transition-colors"
                         )}
@@ -1341,67 +1341,199 @@ const clampValue = (value: number, min: number, max: number) =>
 const ContactsCell = ({
   contacts,
   isOpen,
-  onToggle,
+  onOpen,
+  onClose,
 }: {
   contacts: ClientContact[];
   isOpen: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
+  onClose: () => void;
 }) => {
   const previewContact = contacts[0];
+  const previewPhone = previewContact?.phones?.[0] ?? "—";
   const extraContacts = contacts.slice(1);
+  const cellRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   if (!contacts.length) {
     return <span className="text-sm text-foreground/60">—</span>;
   }
 
+  const handleCopy = (event: React.MouseEvent | React.KeyboardEvent, phone: string) => {
+    event.stopPropagation();
+    if (!phone || phone === "—") return;
+    navigator.clipboard?.writeText(phone);
+    toast({ title: "Телефон скопирован", description: phone });
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const listEl = listRef.current;
+    if (!listEl) return;
+
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const rect = listEl.getBoundingClientRect();
+      if (!rect.height) return;
+      const firstEl = listEl.firstElementChild as HTMLElement | null;
+      if (firstEl) {
+        const itemRect = firstEl.getBoundingClientRect();
+        const pad = Math.max((rect.height - itemRect.height) / 2, 0);
+        listEl.style.setProperty("--wheel-padding", `${pad}px`);
+      }
+      const centerY = rect.top + rect.height / 2;
+      Array.from(listEl.children).forEach((child) => {
+        const el = child as HTMLElement;
+        const elRect = el.getBoundingClientRect();
+        const elCenter = elRect.top + elRect.height / 2;
+        const distance = Math.abs(elCenter - centerY);
+        const max = rect.height / 2;
+        const ratio = Math.min(distance / max, 1);
+        const scale = 1 - 0.15 * ratio;
+        const opacity = 1 - 0.45 * ratio;
+        el.style.setProperty("--wheel-scale", scale.toFixed(3));
+        el.style.setProperty("--wheel-opacity", opacity.toFixed(3));
+        el.classList.toggle("is-center", distance < elRect.height * 0.35);
+      });
+    };
+
+    const alignFirstToCenter = () => {
+      const first = listEl.firstElementChild as HTMLElement | null;
+      if (!first) return;
+      const listRect = listEl.getBoundingClientRect();
+      const firstRect = first.getBoundingClientRect();
+      const offset = first.offsetTop + firstRect.height / 2 - listRect.height / 2;
+      listEl.scrollTop = Math.max(0, offset);
+    };
+
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(update);
+    };
+
+    window.requestAnimationFrame(() => {
+      alignFirstToCenter();
+      update();
+    });
+    listEl.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      listEl.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", update);
+    };
+  }, [isOpen, contacts.length]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!cellRef.current || !target) return;
+      if (!cellRef.current.contains(target)) {
+        onClose();
+      }
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [isOpen, onClose]);
+
   return (
-    <div className="contacts-cell">
-      <button
-        type="button"
-        className={cn("contacts-preview", isOpen && "is-open")}
-        onClick={(event) => {
-          event.stopPropagation();
-          if (!extraContacts.length) return;
-          onToggle();
-        }}
-        aria-expanded={isOpen}
-      >
-        <div className="contacts-preview__row">
-          <div className="contacts-preview__name">
-            <span className="truncate">{previewContact?.name || "—"}</span>
-            {previewContact?.position && (
-              <span className="contacts-preview__role">{previewContact.position}</span>
+    <div ref={cellRef} className="contacts-cell">
+      {!isOpen && (
+        <button
+          type="button"
+          className={cn("contacts-preview", isOpen && "is-open")}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (!extraContacts.length) return;
+            onOpen();
+          }}
+          aria-expanded={isOpen}
+        >
+          <div className="contacts-preview__row">
+            <div className="contacts-preview__name">
+              <span className="truncate">{previewContact?.name || "—"}</span>
+              {previewContact?.position && (
+                <span className="contacts-preview__role">{previewContact.position}</span>
+              )}
+            </div>
+            {previewPhone !== "—" ? (
+              <span
+                role="button"
+                tabIndex={0}
+                className="contacts-copy"
+                onClick={(event) => handleCopy(event, previewPhone)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    handleCopy(event, previewPhone);
+                  }
+                }}
+              >
+                <span>{previewPhone}</span>
+                <Copy className="h-3 w-3 opacity-60" />
+              </span>
+            ) : (
+              <span className="contacts-preview__phone">—</span>
             )}
           </div>
-          <span className="contacts-preview__phone">{previewContact?.phones?.[0] || "—"}</span>
-        </div>
-        <span className="contacts-preview__count">{contacts.length}</span>
-      </button>
+          <span className="contacts-preview__count">{contacts.length}</span>
+        </button>
+      )}
 
       <AnimatePresence initial={false}>
         {extraContacts.length > 0 && isOpen && (
           <motion.div
             key="contacts-expand"
             className="contacts-expand"
-            initial={{ height: 0, opacity: 0, y: -6 }}
+            initial={{ height: 0, opacity: 0, y: -3 }}
             animate={{ height: "auto", opacity: 1, y: 0 }}
-            exit={{ height: 0, opacity: 0, y: -6 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            exit={{ height: 0, opacity: 0, y: -3 }}
+            transition={{ duration: 1.45, ease: [0.12, 1, 0.2, 1] }}
             style={{ overflow: "hidden" }}
           >
-            <div className="contacts-expand__list custom-scrollbar">
-              {extraContacts.map((contact) => {
+            <div ref={listRef} className="contacts-expand__list custom-scrollbar">
+              {contacts.map((contact, index) => {
+                const isPreview = index === 0;
                 const phones = contact.phones ?? [];
                 const primaryPhone = phones[0] ?? "—";
                 return (
-                  <div key={contact.id} className="contacts-expand__item">
+                  <div
+                    key={contact.id}
+                    className={cn("contacts-expand__item", isPreview && "is-preview")}
+                    role={isPreview ? "button" : undefined}
+                    tabIndex={isPreview ? 0 : undefined}
+                    onClick={(event) => {
+                      if (!isPreview) return;
+                      event.stopPropagation();
+                      onClose();
+                    }}
+                    onKeyDown={(event) => {
+                      if (!isPreview) return;
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onClose();
+                      }
+                    }}
+                  >
                     <div className="contacts-expand__item-row">
                       <span className="contacts-expand__item-name">{contact.name || "—"}</span>
                       {contact.position && (
                         <span className="contacts-expand__item-role">{contact.position}</span>
                       )}
                     </div>
-                    <span className="contacts-expand__item-phone">{primaryPhone}</span>
+                    {primaryPhone !== "—" ? (
+                      <button
+                        type="button"
+                        className="contacts-copy"
+                        onClick={(event) => handleCopy(event, primaryPhone)}
+                      >
+                        <span>{primaryPhone}</span>
+                        <Copy className="h-3 w-3 opacity-60" />
+                      </button>
+                    ) : (
+                      <span className="contacts-expand__item-phone">—</span>
+                    )}
                   </div>
                 );
               })}
