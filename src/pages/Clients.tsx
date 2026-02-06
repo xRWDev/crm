@@ -1,5 +1,6 @@
 ﻿
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowDown,
   ArrowUp,
@@ -9,6 +10,7 @@ import {
   Globe,
   Mail,
   MessageCircle,
+  Pencil,
   Phone,
   PhoneCall,
   Plus,
@@ -64,12 +66,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
 import { useCRMStore, Client, ClientContact, Employee } from "@/store/crmStore";
@@ -155,6 +151,7 @@ const clientTypeTone: Record<ClientType, string> = {
 const columnsOrderDefault = [
   "starred",
   "name",
+  "contacts",
   "phone",
   "city",
   "email",
@@ -172,6 +169,7 @@ type ColumnKey = (typeof columnsOrderDefault)[number];
 const columnLabels: Record<ColumnKey, string> = {
   starred: "Избр.",
   name: "Название",
+  contacts: "Контакты",
   phone: "Телефон",
   city: "Город",
   email: "Почта",
@@ -348,7 +346,7 @@ const buildMockClients = (count: number, employees: { id: string; name: string }
       ? new Date(Date.now() + Math.floor(Math.random() * 10) * 86400000)
       : null;
     const sourceChannel = randomFrom([...SOURCE_CHANNELS]);
-    const contactCount = 2 + Math.floor(Math.random() * 3);
+    const contactCount = 3 + Math.floor(Math.random() * 2);
     const contacts = buildMockContacts(contactCount);
 
     result.push({
@@ -436,6 +434,14 @@ const filterByCommunication = (client: ClientRecord, filter: ClientFilterKey) =>
 const exportClientsToExcel = (clients: ClientRecord[]) => {
   const rows = clients.map((client) => ({
     "Название": client.name,
+    "Контакты": (client.contacts ?? [])
+      .map((contact) => {
+        const parts = [contact.name];
+        if (contact.position) parts.push(`(${contact.position})`);
+        if (contact.phones?.length) parts.push(contact.phones.join(", "));
+        return parts.filter(Boolean).join(" ");
+      })
+      .join("; "),
     "Телефон": client.phone ?? "",
     "Город": client.city ?? "",
     "Почта": client.email ?? "",
@@ -482,10 +488,16 @@ const ClientsPage = () => {
   const [regionFilter, setRegionFilter] = useState<string | "all">("all");
   const [cityFilter, setCityFilter] = useState<string | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState<"deals" | "communications">("deals");
+  const suppressOpenRef = useRef(false);
+  const suppressTimerRef = useRef<number | null>(null);
+  const clearSelectionTimerRef = useRef<number | null>(null);
+  const suppressPointerCleanupRef = useRef<(() => void) | null>(null);
 
   const [columnOrder, setColumnOrder] = useLocalStorageState<ColumnKey[]>(
     "crm.clients.columns.order",
@@ -496,6 +508,7 @@ const ClientsPage = () => {
     {
       starred: true,
       name: true,
+      contacts: true,
       phone: true,
       city: true,
       email: true,
@@ -512,10 +525,15 @@ const ClientsPage = () => {
   useEffect(() => {
     setColumnOrder((prev) => {
       const filtered = prev.filter((key) => columnsOrderDefault.includes(key));
-      return filtered.length ? filtered : [...columnsOrderDefault];
+      const missing = columnsOrderDefault.filter((key) => !filtered.includes(key));
+      const next = [...filtered, ...missing];
+      return next.length ? next : [...columnsOrderDefault];
     });
     setColumnVisibility((prev) => {
       const next = { ...prev } as Record<ColumnKey, boolean>;
+      columnsOrderDefault.forEach((key) => {
+        if (typeof next[key] === "undefined") next[key] = true;
+      });
       Object.keys(next).forEach((key) => {
         if (!columnsOrderDefault.includes(key as ColumnKey)) {
           delete (next as Record<string, boolean>)[key];
@@ -696,6 +714,13 @@ const ClientsPage = () => {
         },
       },
       {
+        id: "contacts",
+        header: () => <span className="text-xs uppercase tracking-[0.18em]">Контакты</span>,
+        cell: ({ row }) => {
+          return <ContactsCell contacts={row.original.contacts ?? []} />;
+        },
+      },
+      {
         id: "phone",
         accessorKey: "phone",
         header: () => <span className="text-xs uppercase tracking-[0.18em]">Телефон</span>,
@@ -781,19 +806,23 @@ const ClientsPage = () => {
         id: "lastComment",
         accessorKey: "lastComment",
         header: () => <span className="text-xs uppercase tracking-[0.18em]">Комментарий</span>,
-        cell: ({ getValue }) => {
-          const value = getValue<string>();
+        cell: ({ row, getValue }) => {
+          const value = (getValue<string>() ?? "").trim();
+          const limit = 12;
+          const hasComment = value && value !== "—";
+          const short = hasComment
+            ? value.length > limit
+              ? `${value.slice(0, limit)}...`
+              : value
+            : "—";
           return (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="text-sm text-foreground/80 max-w-[240px] truncate inline-block">
-                    {value || "—"}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{value || "—"}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <CommentHoverTooltip
+              text={hasComment ? value : "Комментарий отсутствует"}
+              onClick={() => handleOpenClient(row.original, "communications")}
+            >
+              <MessageCircle className="h-3.5 w-3.5 text-slate-500" />
+              {short}
+            </CommentHoverTooltip>
           );
         },
       },
@@ -862,9 +891,77 @@ const ClientsPage = () => {
     [allClients, selectedClientId]
   );
 
-  const handleOpenClient = (client: ClientRecord) => {
+  const startSuppressOpen = () => {
+    suppressOpenRef.current = true;
+    if (suppressPointerCleanupRef.current) {
+      suppressPointerCleanupRef.current();
+    }
+    if (suppressTimerRef.current) {
+      window.clearTimeout(suppressTimerRef.current);
+      suppressTimerRef.current = null;
+    }
+    let released = false;
+    const handleRelease = () => {
+      if (released) return;
+      released = true;
+      suppressOpenRef.current = false;
+      window.removeEventListener("pointerup", handlePointerUp, true);
+      window.removeEventListener("pointercancel", handlePointerUp, true);
+      suppressPointerCleanupRef.current = null;
+    };
+    const handlePointerUp = () => {
+      window.setTimeout(handleRelease, 0);
+    };
+    suppressPointerCleanupRef.current = handleRelease;
+    window.addEventListener("pointerup", handlePointerUp, true);
+    window.addEventListener("pointercancel", handlePointerUp, true);
+    suppressTimerRef.current = window.setTimeout(handleRelease, 350);
+  };
+
+  const handleOpenClient = (client: ClientRecord, tab?: "deals" | "communications") => {
+    if (suppressOpenRef.current) return;
+    if (suppressPointerCleanupRef.current) {
+      suppressPointerCleanupRef.current();
+    }
+    if (suppressTimerRef.current) {
+      window.clearTimeout(suppressTimerRef.current);
+      suppressTimerRef.current = null;
+    }
+    if (clearSelectionTimerRef.current) {
+      window.clearTimeout(clearSelectionTimerRef.current);
+      clearSelectionTimerRef.current = null;
+    }
+    suppressOpenRef.current = false;
     setSelectedClientId(client.id);
+    setDetailTab(tab ?? "deals");
     setIsSheetOpen(true);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (suppressTimerRef.current) {
+        window.clearTimeout(suppressTimerRef.current);
+        suppressTimerRef.current = null;
+      }
+      if (clearSelectionTimerRef.current) {
+        window.clearTimeout(clearSelectionTimerRef.current);
+        clearSelectionTimerRef.current = null;
+      }
+      if (suppressPointerCleanupRef.current) {
+        suppressPointerCleanupRef.current();
+      }
+    };
+  }, []);
+
+  const handleSheetOpenChange = (next: boolean) => {
+    setIsSheetOpen(next);
+    if (!next) {
+      startSuppressOpen();
+      if (clearSelectionTimerRef.current) window.clearTimeout(clearSelectionTimerRef.current);
+      clearSelectionTimerRef.current = window.setTimeout(() => {
+        setSelectedClientId(null);
+      }, 300);
+    }
   };
 
   const handleExportSelected = () => {
@@ -890,156 +987,140 @@ const ClientsPage = () => {
 
   return (
     <AppLayout title="Клиенты" subtitle={`${filteredClients.length.toLocaleString()} клиентов`}>
-      <div className="grid grid-cols-1 xl:grid-cols-[300px_1fr] gap-6">
-        <aside className="space-y-4 max-h-[calc(100vh-220px)] sticky top-4 overflow-y-auto pr-1">
-          <div className="glass-card rounded-[22px] p-4">
-            <h3 className="text-sm font-semibold">Фильтры</h3>
-            <div className="mt-4 space-y-2">
-              {isDirector && (
-                <FilterRow
-                  active={baseFilter === "all"}
-                  icon={Users}
-                  label="Все клиенты"
-                  count={counts.all}
-                  onClick={() => setBaseFilter("all")}
-                />
-              )}
-              <FilterRow
-                active={baseFilter === "mine"}
-                icon={Users}
-                label="Мои клиенты"
-                count={counts.mine}
-                onClick={() => setBaseFilter("mine")}
-              />
-              <FilterRow
-                active={baseFilter === "favorites"}
-                icon={Star}
-                label="Избранные"
-                count={counts.favorites}
-                onClick={() => setBaseFilter("favorites")}
-              />
-            </div>
+      <div className={cn("clients-layout", filtersOpen && "is-open")}>
+        <button
+          type="button"
+          className="filters-toggle"
+          onClick={() => setFiltersOpen((prev) => !prev)}
+          aria-label="Открыть фильтры"
+        >
+          <Filter className="h-4 w-4" />
+        </button>
+
+        <aside className={cn("filters-drawer", filtersOpen && "is-open")}>
+          <div className="filters-drawer__header">
+            <span className="text-sm font-semibold">Фильтры</span>
+            <button
+              type="button"
+              className="filters-drawer__close"
+              onClick={() => setFiltersOpen(false)}
+              aria-label="Закрыть фильтры"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
+          <div className="filters-drawer__content">
+            <div className="glass-card rounded-[22px] p-4">
+              <div className="mt-2 space-y-2">
+                {isDirector && (
+                  <FilterRow
+                    active={baseFilter === "all"}
+                    icon={Users}
+                    label="Все клиенты"
+                    count={counts.all}
+                    onClick={() => setBaseFilter("all")}
+                  />
+                )}
+                <FilterRow
+                  active={baseFilter === "mine"}
+                  icon={Users}
+                  label="Мои клиенты"
+                  count={counts.mine}
+                  onClick={() => setBaseFilter("mine")}
+                />
+                <FilterRow
+                  active={baseFilter === "favorites"}
+                  icon={Star}
+                  label="Избранные"
+                  count={counts.favorites}
+                  onClick={() => setBaseFilter("favorites")}
+                />
+              </div>
+            </div>
 
-          <AccordionGroup
-            title="Коммуникации"
-            icon={PhoneCall}
-            items={[
-              { key: "today", label: "Позвонить сегодня", count: counts.today },
-              { key: "overdue", label: "Просроченные", count: counts.overdue },
-              { key: "planned", label: "Запланированные", count: counts.planned },
-              { key: "none", label: "Без коммуникации", count: counts.none },
-              { key: "refused", label: "Отказ", count: counts.refused },
-              { key: "in_progress", label: "В работе", count: counts.in_progress },
-              { key: "success", label: "Завершен удачно", count: counts.success },
-            ]}
-            activeKey={communicationFilter}
-            onSelect={(key) => setCommunicationFilter(key as ClientFilterKey)}
-          />
+            <AccordionGroup
+              title="Коммуникации"
+              icon={PhoneCall}
+              items={[
+                { key: "today", label: "Позвонить сегодня", count: counts.today },
+                { key: "overdue", label: "Просроченные", count: counts.overdue },
+                { key: "planned", label: "Запланированные", count: counts.planned },
+                { key: "none", label: "Без коммуникации", count: counts.none },
+                { key: "refused", label: "Отказ", count: counts.refused },
+                { key: "in_progress", label: "В работе", count: counts.in_progress },
+                { key: "success", label: "Завершен удачно", count: counts.success },
+              ]}
+              activeKey={communicationFilter}
+              onSelect={(key) => setCommunicationFilter(key as ClientFilterKey)}
+            />
 
-          <AccordionGroup
-            title="Тип клиента"
-            icon={Filter}
-            items={CLIENT_TYPES.map((type) => ({
-              key: type,
-              label: clientTypeLabel[type],
-              count: allClients.filter((client) => client.clientType === type).length,
-            }))}
-            activeKey={typeFilter}
-            onSelect={(key) => setTypeFilter(key as ClientType)}
-          />
+            <AccordionGroup
+              title="Тип клиента"
+              icon={Filter}
+              items={CLIENT_TYPES.map((type) => ({
+                key: type,
+                label: clientTypeLabel[type],
+                count: allClients.filter((client) => client.clientType === type).length,
+              }))}
+              activeKey={typeFilter}
+              onSelect={(key) => setTypeFilter(key as ClientType)}
+            />
 
-          <AccordionGroup
-            title="Вид деятельности"
-            icon={Filter}
-            items={activityOptions.map((option) => ({
-              key: option,
-              label: option,
-              count: allClients.filter((client) => client.activityType === option).length,
-            }))}
-            activeKey={activityFilter}
-            onSelect={(key) => setActivityFilter(key as string)}
-          />
+            <AccordionGroup
+              title="Вид деятельности"
+              icon={Filter}
+              items={activityOptions.map((option) => ({
+                key: option,
+                label: option,
+                count: allClients.filter((client) => client.activityType === option).length,
+              }))}
+              activeKey={activityFilter}
+              onSelect={(key) => setActivityFilter(key as string)}
+            />
 
-          <AccordionGroup
-            title="Продукция"
-            icon={Filter}
-            items={productOptions.map((option) => ({
-              key: option,
-              label: option,
-              count: allClients.filter((client) => client.productCategory === option).length,
-            }))}
-            activeKey={productFilter}
-            onSelect={(key) => setProductFilter(key as string)}
-          />
+            <AccordionGroup
+              title="Продукция"
+              icon={Filter}
+              items={productOptions.map((option) => ({
+                key: option,
+                label: option,
+                count: allClients.filter((client) => client.productCategory === option).length,
+              }))}
+              activeKey={productFilter}
+              onSelect={(key) => setProductFilter(key as string)}
+            />
 
-          <AccordionGroup
-            title="Область"
-            icon={Filter}
-            items={regionOptions.map((option) => ({
-              key: option,
-              label: option,
-              count: allClients.filter((client) => client.region === option).length,
-            }))}
-            activeKey={regionFilter}
-            onSelect={(key) => setRegionFilter(key as string)}
-          />
+            <AccordionGroup
+              title="Область"
+              icon={Filter}
+              items={regionOptions.map((option) => ({
+                key: option,
+                label: option,
+                count: allClients.filter((client) => client.region === option).length,
+              }))}
+              activeKey={regionFilter}
+              onSelect={(key) => setRegionFilter(key as string)}
+            />
 
-          <AccordionGroup
-            title="Город"
-            icon={Filter}
-            items={cityOptions.map((option) => ({
-              key: option,
-              label: option,
-              count: allClients.filter((client) => client.city === option).length,
-            }))}
-            activeKey={cityFilter}
-            onSelect={(key) => setCityFilter(key as string)}
-          />
-
+            <AccordionGroup
+              title="Город"
+              icon={Filter}
+              items={cityOptions.map((option) => ({
+                key: option,
+                label: option,
+                count: allClients.filter((client) => client.city === option).length,
+              }))}
+              activeKey={cityFilter}
+              onSelect={(key) => setCityFilter(key as string)}
+            />
+          </div>
         </aside>
 
-        <section className="space-y-4 min-w-0 relative">
-          <div className="glass-card rounded-[22px] p-4 sticky top-2 z-20">
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="min-w-0 mr-auto">
-                <h2 className="text-xl font-semibold">Клиенты</h2>
-                <p className="text-sm text-muted-foreground">
-                  {filteredClients.length.toLocaleString()} клиентов
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-2 w-full lg:w-auto">
-                <Button variant="secondary" size="sm" onClick={handleExportSelected}>
-                  <FileSpreadsheet className="h-4 w-4" />
-                  Экспорт
-                </Button>
-                <ColumnManager
-                  columnOrder={columnOrder}
-                  columnVisibility={columnVisibility}
-                  onMove={(key, direction) => {
-                    const index = columnOrder.indexOf(key);
-                    if (index < 0) return;
-                    const nextIndex = direction === "up" ? index - 1 : index + 1;
-                    if (nextIndex < 0 || nextIndex >= columnOrder.length) return;
-                    const next = [...columnOrder];
-                    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-                    setColumnOrder(next);
-                  }}
-                  onToggle={(key) =>
-                    setColumnVisibility((prev) => ({
-                      ...prev,
-                      [key]: !prev[key],
-                    }))
-                  }
-                />
-              </div>
-            </div>
-          </div>
-
+        <section className="clients-main space-y-4 min-w-0 relative h-[737px]">
           <div className="glass-card rounded-[22px] p-4 overflow-hidden relative">
             <div
               ref={tableContainerRef}
-              className="h-[549px] w-full min-w-0 overflow-x-auto overflow-y-auto custom-scrollbar"
+              className="h-[649px] w-full min-w-0 overflow-x-auto overflow-y-auto custom-scrollbar"
               onScroll={(event) => {
                 const target = event.currentTarget;
                 if (target.scrollTop + target.clientHeight >= target.scrollHeight - 120) {
@@ -1113,14 +1194,41 @@ const ClientsPage = () => {
           </div>
 
           <div className="sticky bottom-2 z-10">
-            <div className="glass-card rounded-[22px] px-4 flex items-center gap-3 h-[42px] w-[1232px]">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <input
-                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                placeholder="Поиск клиента..."
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-              />
+            <div className="flex items-center gap-3">
+              <div className="glass-card rounded-[22px] px-4 flex items-center gap-3 h-[42px] w-[1232px]">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                <input
+                  className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  placeholder="Поиск клиента..."
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" size="sm" onClick={handleExportSelected}>
+                  <FileSpreadsheet className="h-4 w-4" />
+                  Экспорт
+                </Button>
+                <ColumnManager
+                  columnOrder={columnOrder}
+                  columnVisibility={columnVisibility}
+                  onMove={(key, direction) => {
+                    const index = columnOrder.indexOf(key);
+                    if (index < 0) return;
+                    const nextIndex = direction === "up" ? index - 1 : index + 1;
+                    if (nextIndex < 0 || nextIndex >= columnOrder.length) return;
+                    const next = [...columnOrder];
+                    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+                    setColumnOrder(next);
+                  }}
+                  onToggle={(key) =>
+                    setColumnVisibility((prev) => ({
+                      ...prev,
+                      [key]: !prev[key],
+                    }))
+                  }
+                />
+              </div>
             </div>
           </div>
 
@@ -1155,8 +1263,10 @@ const ClientsPage = () => {
 
       <ClientDetailSheet
         open={isSheetOpen}
-        onOpenChange={setIsSheetOpen}
+        onOpenChange={handleSheetOpenChange}
+        onPointerDownCapture={startSuppressOpen}
         client={selectedClient}
+        initialTab={detailTab}
         employees={employees}
         updateClient={updateClient}
         updateMockClient={updateMockClient}
@@ -1203,6 +1313,281 @@ const FilterRow = ({
   </button>
 );
 
+const clampValue = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
+
+const ContactsCell = ({ contacts }: { contacts: ClientContact[] }) => {
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<{ left: number; top: number; side: "top" | "bottom" }>({
+    left: 0,
+    top: 0,
+    side: "bottom",
+  });
+
+  const previewContacts = useMemo(() => (contacts.length ? [contacts[0]] : []), [contacts]);
+
+  const updatePosition = () => {
+    const trigger = triggerRef.current;
+    const popover = popoverRef.current;
+    if (!trigger || !popover) return;
+    const rect = trigger.getBoundingClientRect();
+    const popWidth = popover.offsetWidth;
+    const popHeight = popover.offsetHeight;
+    const padding = 12;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let left = rect.left + rect.width / 2 - popWidth / 2;
+    left = clampValue(left, padding, Math.max(padding, viewportWidth - popWidth - padding));
+
+    let top = rect.bottom + 10;
+    let side: "top" | "bottom" = "bottom";
+    if (top + popHeight > viewportHeight - padding) {
+      top = rect.top - popHeight - 10;
+      side = "top";
+    }
+    if (top < padding) {
+      top = padding;
+    }
+
+    setPosition({ left, top, side });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updatePosition();
+  }, [open, contacts.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (popoverRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    const handleScroll = () => updatePosition();
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("keydown", handleKey);
+    window.addEventListener("resize", handleScroll);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("keydown", handleKey);
+      window.removeEventListener("resize", handleScroll);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [open]);
+
+  if (!contacts.length) {
+    return <span className="text-sm text-foreground/60">—</span>;
+  }
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="contacts-preview"
+        onClick={(event) => {
+          event.stopPropagation();
+          setOpen((prev) => !prev);
+        }}
+        aria-expanded={open}
+      >
+        <div className="space-y-1">
+          {previewContacts.map((contact) => {
+            const phones = contact.phones ?? [];
+            const primaryPhone = phones[0] ?? "—";
+            return (
+              <div key={contact.id} className="contacts-preview__row">
+                <div className="contacts-preview__name">
+                  <span className="truncate">{contact.name || "—"}</span>
+                  {contact.position && (
+                    <span className="contacts-preview__role">{contact.position}</span>
+                  )}
+                </div>
+                <span className="contacts-preview__phone">{primaryPhone}</span>
+              </div>
+            );
+          })}
+        </div>
+        <span className="contacts-preview__count">{contacts.length}</span>
+      </button>
+
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={popoverRef}
+              className="contacts-popover"
+              data-side={position.side}
+              style={{ left: position.left, top: position.top }}
+            >
+              <div className="contacts-popover__header">
+                Контакты ({contacts.length})
+                <button
+                  type="button"
+                  className="contacts-popover__close"
+                  onClick={() => setOpen(false)}
+                  aria-label="Закрыть"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="contacts-popover__list">
+                {contacts.map((contact) => {
+                  const phones = contact.phones ?? [];
+                  const primaryPhone = phones[0] ?? "—";
+                  const extraPhones = phones.length > 1 ? `+${phones.length - 1}` : "";
+                  return (
+                    <div key={contact.id} className="contacts-popover__item">
+                      <div className="contacts-popover__item-row">
+                        <span className="contacts-popover__item-name">{contact.name || "—"}</span>
+                        {contact.position && (
+                          <span className="contacts-popover__item-role">{contact.position}</span>
+                        )}
+                      </div>
+                      <div className="contacts-popover__item-phone">
+                        {primaryPhone}
+                        {extraPhones && (
+                          <span className="contacts-popover__item-extra">{extraPhones}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
+};
+
+const CommentHoverTooltip = ({
+  text,
+  onClick,
+  children,
+}: {
+  text: string;
+  onClick: () => void;
+  children: ReactNode;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [cursor, setCursor] = useState({ x: 0, y: 0 });
+  const [size, setSize] = useState({ w: 240, h: 70 });
+  const [instant, setInstant] = useState(true);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+
+  const updateCursor = (event: React.MouseEvent<HTMLButtonElement>, immediate = false) => {
+    const { clientX, clientY } = event;
+    setCursor({ x: clientX, y: clientY });
+    if (immediate) setInstant(true);
+  };
+
+  useLayoutEffect(() => {
+    if (!open || !tooltipRef.current) return;
+    const rect = tooltipRef.current.getBoundingClientRect();
+    if (rect.width && rect.height) setSize({ w: rect.width, h: rect.height });
+  }, [open, text]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    if (cursor.x !== 0 || cursor.y !== 0) return;
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setCursor({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+  }, [open, cursor.x, cursor.y]);
+
+  useEffect(() => {
+    if (!open) {
+      setInstant(true);
+      return;
+    }
+    const id = requestAnimationFrame(() => setInstant(false));
+    return () => cancelAnimationFrame(id);
+  }, [open]);
+
+  const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 0;
+  const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 0;
+  const padding = 12;
+  const width = size.w || 240;
+  const height = size.h || 70;
+
+  let left = cursor.x - width / 2;
+  left = clampValue(left, padding, Math.max(padding, viewportWidth - width - padding));
+  let top = cursor.y - height - 18;
+  let side: "top" | "bottom" = "top";
+  if (top < padding) {
+    top = cursor.y + 18;
+    side = "bottom";
+  }
+  if (top + height > viewportHeight - padding) {
+    top = Math.max(padding, viewportHeight - height - padding);
+  }
+
+  const tailLeft = clampValue(cursor.x - left, 26, width - 26);
+  const tooltipStyle = {
+    left,
+    top,
+    "--tail-left": `${tailLeft}px`,
+  } as React.CSSProperties;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="comment-pill"
+        onMouseEnter={(event) => {
+          updateCursor(event, true);
+          setOpen(true);
+        }}
+        onMouseMove={(event) => {
+          if (!open) {
+            updateCursor(event, true);
+            setOpen(true);
+            return;
+          }
+          updateCursor(event);
+        }}
+        onMouseLeave={() => setOpen(false)}
+        onClick={(event) => {
+          event.stopPropagation();
+          onClick();
+        }}
+      >
+        {children}
+      </button>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={tooltipRef}
+              className="comment-tooltip-floating"
+              data-side={side}
+              style={{
+                ...tooltipStyle,
+                transition: instant
+                  ? "none"
+                  : "left 120ms cubic-bezier(0.22, 0.9, 0.2, 1), top 120ms cubic-bezier(0.22, 0.9, 0.2, 1)",
+              }}
+            >
+              <div className="comment-tooltip__title">Комментарий</div>
+              <div className="comment-tooltip__text">{text}</div>
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
+};
+
 const AccordionGroup = ({
   title,
   icon: Icon,
@@ -1216,7 +1601,7 @@ const AccordionGroup = ({
   activeKey: string | "all";
   onSelect: (key: string) => void;
 }) => {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   return (
     <div className="glass-card rounded-[22px] p-4">
       <Collapsible open={open} onOpenChange={setOpen}>
@@ -1595,7 +1980,9 @@ const AddClientDialog = ({
 const ClientDetailSheet = ({
   open,
   onOpenChange,
+  onPointerDownCapture,
   client,
+  initialTab,
   employees,
   updateClient,
   updateMockClient,
@@ -1605,7 +1992,9 @@ const ClientDetailSheet = ({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onPointerDownCapture?: () => void;
   client: ClientRecord | null;
+  initialTab?: "deals" | "communications";
   employees: Employee[];
   updateClient: (id: string, data: Partial<Client>) => void;
   updateMockClient: (id: string, data: Partial<ClientRecord>) => void;
@@ -1619,18 +2008,23 @@ const ClientDetailSheet = ({
   const [note, setNote] = useState(client.lastComment ?? "");
   const [draft, setDraft] = useState<ClientRecord>(client);
   const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState<"deals" | "communications">(
+    initialTab ?? "deals"
+  );
 
   useEffect(() => {
+    if (!open) return;
     setComments(client.comments ?? []);
     setCommentInput("");
     setNote(client.lastComment ?? "");
     setDraft(client);
     setIsEditing(false);
-  }, [client, open]);
+    setActiveTab(initialTab ?? "deals");
+  }, [client, open, initialTab]);
 
   const metaLine = [client.company, client.city, client.region].filter(Boolean).join(" • ");
   const deals = client.deals && client.deals.length ? client.deals : SAMPLE_DEALS;
-  const contactList = client.contacts ?? [];
+  const contactList = draft.contacts ?? [];
   const communications = client.communications ?? [];
   const responsible = employees.find((emp) => emp.id === (client.responsibleId || client.ownerId));
   const tabs = [
@@ -1650,6 +2044,44 @@ const ClientDetailSheet = ({
 
   const updateDraft = <K extends keyof ClientRecord>(key: K, value: ClientRecord[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const updateContact = (index: number, data: Partial<ClientContact>) => {
+    setDraft((prev) => {
+      const nextContacts = [...(prev.contacts ?? [])];
+      const current = nextContacts[index] ?? {
+        id: `contact-${Date.now()}-${index}`,
+        name: "",
+        position: "",
+        phones: [],
+        emails: [],
+      };
+      nextContacts[index] = { ...current, ...data };
+      return { ...prev, contacts: nextContacts };
+    });
+  };
+
+  const handleAddContact = () => {
+    setDraft((prev) => ({
+      ...prev,
+      contacts: [
+        ...(prev.contacts ?? []),
+        {
+          id: `contact-${Date.now()}`,
+          name: "",
+          position: "",
+          phones: [],
+          emails: [],
+        },
+      ],
+    }));
+  };
+
+  const handleRemoveContact = (index: number) => {
+    setDraft((prev) => ({
+      ...prev,
+      contacts: (prev.contacts ?? []).filter((_, idx) => idx !== index),
+    }));
   };
 
   const handleAddComment = () => {
@@ -1678,8 +2110,23 @@ const ClientDetailSheet = ({
   const handleSave = () => {
     if (!draft.name?.trim()) return;
     const responsibleName = employees.find((emp) => emp.id === draft.responsibleId)?.name || "—";
+    const cleanedContacts =
+      draft.contacts
+        ?.map((contact) => ({
+          ...contact,
+          name: contact.name?.trim() ?? "",
+          position: contact.position?.trim() ?? "",
+          phones: (contact.phones ?? []).map((phone) => phone.trim()).filter(Boolean),
+          emails: (contact.emails ?? []).map((email) => email.trim()).filter(Boolean),
+        }))
+        .filter((contact) => contact.name) ?? [];
     if (client.id.startsWith("mock-")) {
-      updateMockClient(client.id, { ...draft, responsibleName, lastComment: note });
+      updateMockClient(client.id, {
+        ...draft,
+        responsibleName,
+        lastComment: note,
+        contacts: cleanedContacts,
+      });
     } else {
       const updates: Partial<Client> = {
         name: draft.name,
@@ -1695,6 +2142,7 @@ const ClientDetailSheet = ({
         responsibleId: draft.responsibleId,
         communicationStatus: draft.status,
         sourceChannel: draft.sourceChannel,
+        contacts: cleanedContacts,
       };
       const trimmedNote = note.trim();
       if (trimmedNote && trimmedNote !== (client.lastComment ?? "").trim()) {
@@ -1716,7 +2164,11 @@ const ClientDetailSheet = ({
         if (!next) setIsEditing(false);
       }}
     >
-      <DialogContent className="client-details-modal modal-surface flex max-h-[90vh] w-[min(96vw,1280px)] max-w-6xl flex-col overflow-hidden rounded-[28px] p-6 bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-100/50 !translate-x-[-50%] !translate-y-[-50%]">
+      <DialogContent
+        className="client-details-modal modal-surface flex max-h-[90vh] w-[min(96vw,1280px)] max-w-6xl flex-col overflow-hidden rounded-[28px] p-6 bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-100/50 !translate-x-[-50%] !translate-y-[-50%]"
+        onPointerDownCapture={onPointerDownCapture}
+        onPointerDownOutside={onPointerDownCapture}
+      >
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-sky-200/40 blur-3xl" />
           <div className="absolute top-32 -left-24 h-72 w-72 rounded-full bg-rose-200/30 blur-3xl" />
@@ -1782,19 +2234,30 @@ const ClientDetailSheet = ({
                 </>
               )}
             </div>
-            {isEditing ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" onClick={handleSave} disabled={!draft.name?.trim()}>
-                  Сохранить
+            <div className="flex flex-wrap items-center gap-2">
+              {isEditing ? (
+                <>
+                  <Button size="sm" onClick={handleSave} disabled={!draft.name?.trim()}>
+                    Сохранить
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={handleCancelEdit}>
+                    Отменить
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" variant="secondary" onClick={() => setIsEditing(true)}>
+                  <Pencil className="h-4 w-4" />
+                  Редактировать
                 </Button>
-                <Button size="sm" variant="ghost" onClick={handleCancelEdit}>
-                  Отменить
-                </Button>
-              </div>
-            ) : null}
+              )}
+            </div>
           </div>
 
-          <Tabs defaultValue="deals" className="flex min-h-0 flex-1 flex-col">
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as "deals" | "communications")}
+            className="flex min-h-0 flex-1 flex-col"
+          >
             <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 xl:grid-cols-[1.65fr,0.95fr]">
               <div className="flex min-h-0 flex-col">
                 <TabsList className="grid h-auto w-full shrink-0 grid-cols-1 gap-3 bg-transparent p-0 sm:grid-cols-2 animate-fade-up">
@@ -1976,47 +2439,119 @@ const ClientDetailSheet = ({
                 </InfoCard>
 
                 <InfoCard title={`Контактные лица (${contactList.length})`} className="animate-fade-up">
-                  <Collapsible defaultOpen={false}>
-                    <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl border border-border/60 bg-white/70 px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:bg-white">
-                      Показать контакты
-                      <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="mt-3 space-y-3">
+                  {isEditing ? (
+                    <div className="space-y-3">
                       {contactList.length ? (
-                        <div className="space-y-3">
-                          {contactList.map((contact) => (
-                            <div key={contact.id} className="rounded-2xl border border-border/60 bg-white/70 p-3">
-                              <div className="flex items-start gap-3">
-                                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-xs font-semibold text-primary">
-                                  {getInitials(contact.name)}
-                                </div>
-                                <div className="flex-1 space-y-1">
-                                  <p className="text-sm font-semibold">{contact.name}</p>
-                                  <p className="text-xs text-muted-foreground">{contact.position || "—"}</p>
-                                  <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                                    {contact.phones.map((phone) => (
-                                      <div key={phone} className="flex items-center gap-2">
-                                        <Phone className="h-3.5 w-3.5" />
-                                        <span>{phone}</span>
-                                      </div>
-                                    ))}
-                                    {contact.emails.map((email) => (
-                                      <div key={email} className="flex items-center gap-2">
-                                        <Mail className="h-3.5 w-3.5" />
-                                        <span>{email}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
+                        contactList.map((contact, index) => (
+                          <div
+                            key={contact.id}
+                            className="rounded-2xl border border-border/60 bg-white/70 p-3 space-y-2"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <Input
+                                className="h-9"
+                                value={contact.name}
+                                placeholder="Имя и фамилия"
+                                onChange={(event) =>
+                                  updateContact(index, { name: event.target.value })
+                                }
+                              />
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-9 w-9"
+                                onClick={() => handleRemoveContact(index)}
+                                aria-label="Удалить контакт"
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
                             </div>
-                          ))}
-                        </div>
+                            <Input
+                              className="h-9"
+                              value={contact.position ?? ""}
+                              placeholder="Должность"
+                              onChange={(event) =>
+                                updateContact(index, { position: event.target.value })
+                              }
+                            />
+                            <Input
+                              className="h-9"
+                              value={(contact.phones ?? []).join(", ")}
+                              placeholder="Телефоны через запятую"
+                              onChange={(event) =>
+                                updateContact(index, {
+                                  phones: event.target.value
+                                    .split(",")
+                                    .map((item) => item.trim())
+                                    .filter(Boolean),
+                                })
+                              }
+                            />
+                            <Input
+                              className="h-9"
+                              value={(contact.emails ?? []).join(", ")}
+                              placeholder="Email через запятую"
+                              onChange={(event) =>
+                                updateContact(index, {
+                                  emails: event.target.value
+                                    .split(",")
+                                    .map((item) => item.trim())
+                                    .filter(Boolean),
+                                })
+                              }
+                            />
+                          </div>
+                        ))
                       ) : (
                         <p className="text-sm text-muted-foreground">Контактов нет.</p>
                       )}
-                    </CollapsibleContent>
-                  </Collapsible>
+                      <Button size="sm" variant="secondary" onClick={handleAddContact}>
+                        Добавить контакт
+                      </Button>
+                    </div>
+                  ) : (
+                    <Collapsible defaultOpen={false}>
+                      <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl border border-border/60 bg-white/70 px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:bg-white">
+                        Показать контакты
+                        <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-3 space-y-3">
+                        {contactList.length ? (
+                          <div className="space-y-3">
+                            {contactList.map((contact) => (
+                              <div key={contact.id} className="rounded-2xl border border-border/60 bg-white/70 p-3">
+                                <div className="flex items-start gap-3">
+                                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-xs font-semibold text-primary">
+                                    {getInitials(contact.name)}
+                                  </div>
+                                  <div className="flex-1 space-y-1">
+                                    <p className="text-sm font-semibold">{contact.name}</p>
+                                    <p className="text-xs text-muted-foreground">{contact.position || "—"}</p>
+                                    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                                      {contact.phones.map((phone) => (
+                                        <div key={phone} className="flex items-center gap-2">
+                                          <Phone className="h-3.5 w-3.5" />
+                                          <span>{phone}</span>
+                                        </div>
+                                      ))}
+                                      {contact.emails.map((email) => (
+                                        <div key={email} className="flex items-center gap-2">
+                                          <Mail className="h-3.5 w-3.5" />
+                                          <span>{email}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Контактов нет.</p>
+                        )}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
                 </InfoCard>
 
                 <InfoCard title="Информация о компании">
