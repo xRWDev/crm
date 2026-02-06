@@ -587,11 +587,20 @@
     top: 50% !important;
     transform: translate(-50%, -50%) !important;
     animation: client-modal-in 260ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+    animation-fill-mode: both !important;
     will-change: transform, opacity, filter;
   }
 
   .client-details-modal[data-state="closed"] {
     animation: client-modal-out 200ms ease-in !important;
+    animation-fill-mode: both !important;
+    opacity: 0 !important;
+    pointer-events: none;
+  }
+
+  .client-details-modal[data-state="open"] {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .client-details-modal .bg-muted\/50 {

@@ -1268,19 +1268,21 @@ const ClientsPage = () => {
         }}
       />
 
-      <ClientDetailSheet
-        open={isSheetOpen}
-        onOpenChange={handleSheetOpenChange}
-        onPointerDownCapture={startSuppressOpen}
-        client={selectedClient}
-        initialTab={detailTab}
-        employees={employees}
-        updateClient={updateClient}
-        updateMockClient={updateMockClient}
-        currentUserId={currentUserId}
-        currentUserName={currentUserName}
-        isDirector={isDirector}
-      />
+      {selectedClient && (
+        <ClientDetailSheet
+          open={isSheetOpen}
+          onOpenChange={handleSheetOpenChange}
+          onPointerDownCapture={startSuppressOpen}
+          client={selectedClient}
+          initialTab={detailTab}
+          employees={employees}
+          updateClient={updateClient}
+          updateMockClient={updateMockClient}
+          currentUserId={currentUserId}
+          currentUserName={currentUserName}
+          isDirector={isDirector}
+        />
+      )}
     </AppLayout>
   );
 };
@@ -2172,7 +2174,7 @@ const ClientDetailSheet = ({
       }}
     >
       <DialogContent
-        className="client-details-modal modal-surface flex max-h-[90vh] w-[min(96vw,1280px)] max-w-6xl flex-col overflow-hidden rounded-[28px] p-6 bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-100/50 !translate-x-[-50%] !translate-y-[-50%]"
+        className="client-details-modal modal-surface flex max-h-[90vh] w-[min(96vw,1280px)] max-w-6xl flex-col overflow-hidden rounded-[28px] p-6 bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-100/50 !translate-x-[-50%] !translate-y-[-50%] data-[state=open]:animate-none data-[state=closed]:animate-none"
         onPointerDownCapture={onPointerDownCapture}
         onPointerDownOutside={onPointerDownCapture}
       >
