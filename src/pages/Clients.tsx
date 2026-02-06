@@ -695,7 +695,7 @@ const ClientsPage = () => {
           return (
             <button
               type="button"
-              className="min-w-[180px] text-left"
+              className="min-w-[180px] text-center"
               onClick={(event) => {
                 event.stopPropagation();
                 const selection = window.getSelection?.();
@@ -703,12 +703,19 @@ const ClientsPage = () => {
                 handleOpenClient(client);
               }}
             >
-              <div className="text-sm font-semibold text-foreground">{client.name}</div>
-              {client.clientType && (
-                <span className={cn("mt-1 inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold", clientTypeTone[client.clientType])}>
-                  {clientTypeLabel[client.clientType]}
-                </span>
-              )}
+              <div className="flex flex-col items-center gap-1">
+                <div className="text-sm font-semibold text-foreground text-center">{client.name}</div>
+                {client.clientType && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold",
+                      clientTypeTone[client.clientType]
+                    )}
+                  >
+                    {clientTypeLabel[client.clientType]}
+                  </span>
+                )}
+              </div>
             </button>
           );
         },
@@ -990,7 +997,7 @@ const ClientsPage = () => {
       <div className={cn("clients-layout", filtersOpen && "is-open")}>
         <button
           type="button"
-          className="filters-toggle"
+          className={cn("filters-toggle", filtersOpen && "is-active")}
           onClick={() => setFiltersOpen((prev) => !prev)}
           aria-label="Открыть фильтры"
         >
@@ -1009,7 +1016,7 @@ const ClientsPage = () => {
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="filters-drawer__content">
+          <div className="filters-drawer__content custom-scrollbar">
             <div className="glass-card rounded-[22px] p-4">
               <div className="mt-2 space-y-2">
                 {isDirector && (
@@ -1117,7 +1124,7 @@ const ClientsPage = () => {
         </aside>
 
         <section className="clients-main space-y-4 min-w-0 relative h-[737px]">
-          <div className="glass-card rounded-[22px] p-4 overflow-hidden relative">
+          <div className="glass-card rounded-[22px] p-4 overflow-hidden relative animate-fade-up">
             <div
               ref={tableContainerRef}
               className="h-[649px] w-full min-w-0 overflow-x-auto overflow-y-auto custom-scrollbar"
@@ -1605,14 +1612,14 @@ const AccordionGroup = ({
   return (
     <div className="glass-card rounded-[22px] p-4">
       <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger className="flex w-full items-center justify-between">
+        <CollapsibleTrigger className="flex w-full items-center justify-between collapsible-trigger">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Icon className="h-4 w-4 text-primary" />
             {title}
           </div>
           <ChevronRight className={cn("h-4 w-4 transition-transform", open && "rotate-90")} />
         </CollapsibleTrigger>
-        <CollapsibleContent className="mt-3 space-y-2">
+        <CollapsibleContent className="mt-3 space-y-2 collapsible-content">
           {items.map((item) => (
             <FilterRow
               key={item.key}
@@ -2511,11 +2518,11 @@ const ClientDetailSheet = ({
                     </div>
                   ) : (
                     <Collapsible defaultOpen={false}>
-                      <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl border border-border/60 bg-white/70 px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:bg-white">
-                        Показать контакты
-                        <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="mt-3 space-y-3">
+                    <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl border border-border/60 bg-white/70 px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:bg-white collapsible-trigger">
+                      Показать контакты
+                      <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-3 space-y-3 collapsible-content">
                         {contactList.length ? (
                           <div className="space-y-3">
                             {contactList.map((contact) => (
