@@ -42,7 +42,7 @@
     --input: 220 10% 96% / 0.9;
     --ring: 206 86% 46%;
 
-    --radius: 1.5rem;
+    --radius: 0.5rem;
 
     /* Glassmorphism */
     --glass-bg: 0 0% 100% / 0.9;
@@ -1576,6 +1576,7 @@
 .soft-ui .glass-card,
 .soft-ui .glass-panel,
 .soft-ui .modal-surface,
+.soft-ui .crm-dialog,
 .soft-ui .ios-button,
 .soft-ui .ios-input,
 .soft-ui .search-bar,
@@ -1583,13 +1584,32 @@
 .soft-ui .status-badge,
 .soft-ui .ios-setting-card,
 .soft-ui .notification-panel,
-.soft-ui .topbar-outline {
+.soft-ui .topbar-outline,
+.soft-ui .clients-fab,
+.soft-ui .task-fab,
+.soft-ui .task-side-peek,
+.soft-ui .task-side-panel,
+.soft-ui .contacts-preview,
+.soft-ui .contacts-popover,
+.soft-ui .contacts-popover__item,
+.soft-ui .comment-pill,
+.soft-ui .comment-tooltip-floating,
+.soft-ui .filters-toggle,
+.soft-ui .filters-drawer {
   border-radius: 8px !important;
 }
 
 .soft-ui [class*="rounded-"],
 .soft-ui [class~="rounded"] {
   border-radius: 8px !important;
+}
+
+.soft-ui .rounded-full {
+  border-radius: 9999px !important;
+}
+
+.soft-ui .rounded-\[2px\] {
+  border-radius: 2px !important;
 }
 
 }
