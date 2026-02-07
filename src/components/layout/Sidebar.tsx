@@ -58,13 +58,13 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
   return (
     <aside 
       className={cn(
-        "absolute left-6 top-6 bottom-6 z-40 h-auto glass-panel rounded-[26px] border border-sidebar-border transition-all duration-300 ease-out",
+        "absolute left-6 top-6 bottom-6 z-40 h-auto glass-panel rounded-[26px] border border-sidebar-border transition-all duration-300 ease-out sidebar-bright",
         collapsed ? "w-[72px]" : "w-[260px]"
       )}
     >
       <div className="flex h-full flex-col">
         {/* Logo */}
-        <div className="flex h-16 items-center justify-between px-4 border-b border-sidebar-border">
+        <div className="sidebar-header flex h-16 items-center justify-between px-4 border-b border-sidebar-border">
           {!collapsed && (
             <div className="flex items-center gap-3 animate-fade-in">
               <img
@@ -88,7 +88,7 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
+        <nav className="sidebar-nav flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
           {visibleItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
@@ -114,7 +114,7 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
                   </span>
                 )}
                 {!collapsed && item.path === '/tasks' && tasksCount > 0 && (
-                  <span className="ml-auto inline-flex h-5 w-5 items-center justify-center rounded-none bg-muted text-[11px] font-semibold text-muted-foreground">
+                  <span className="nav-count ml-auto inline-flex h-5 w-5 items-center justify-center rounded-none text-[11px] font-semibold">
                     {tasksCount}
                   </span>
                 )}
@@ -124,7 +124,7 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
         </nav>
 
         {/* Theme Toggle & User */}
-        <div className="border-t border-sidebar-border p-3">
+        <div className="sidebar-footer border-t border-sidebar-border p-3">
           <button
             onClick={toggleTheme}
             className={cn(

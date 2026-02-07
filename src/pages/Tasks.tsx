@@ -4,16 +4,17 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock3,
+  Filter,
   Flame,
   ListChecks,
   MessageSquare,
-  Plus,
   Sparkles,
   User,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 import { Modal } from '@/components/ui/Modal';
 import { useCRMStore, Task, TaskComment } from '@/store/crmStore';
 import { useAuthStore } from '@/store/authStore';
@@ -109,6 +110,7 @@ export default function Tasks() {
   );
   const [priorityFilter, setPriorityFilter] = useState<'all' | Task['priority']>('all');
   const [urgentOnly, setUrgentOnly] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [taskForm, setTaskForm] = useState({
@@ -423,17 +425,16 @@ export default function Tasks() {
       <button
         onClick={onClick}
         className={cn(
-          'flex items-center justify-between rounded-none px-3 py-2 text-sm transition-all duration-200 ease-out',
-          isActive
-            ? 'bg-primary/10 text-primary shadow-[0_12px_26px_rgba(15,23,42,0.12)] -translate-y-[1px]'
-            : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground hover:shadow-[0_12px_26px_rgba(15,23,42,0.10)] hover:-translate-y-[1px]'
+          'filters-row w-full flex items-center justify-between rounded-xl px-3 py-2 text-sm transition-all',
+          isActive && 'is-active'
         )}
       >
         <span className="flex items-center gap-2">
-          {Icon && <Icon className="h-4 w-4 text-current/70" />}
+          <span className={cn('filters-row__dot h-1.5 w-1.5 rounded-full', isActive && 'is-active')} />
+          {Icon && <Icon className="filters-row__icon h-4 w-4" />}
           <span>{label}</span>
         </span>
-        <span className="ml-3 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-none bg-muted text-[11px] font-semibold text-muted-foreground">
+        <span className="filters-row__count inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-2 text-[11px] font-semibold">
           {count}
         </span>
       </button>
@@ -442,19 +443,34 @@ export default function Tasks() {
 
   return (
     <AppLayout title="Задачи" subtitle="Контроль задач и исполнителей">
-      <div className="grid grid-cols-12 gap-6 animate-fade-up min-h-full">
-        <aside className="col-span-12 xl:col-span-3 space-y-4">
-          <div className="glass-card rounded-2xl p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-foreground">Фильтры</h3>
-            {isDirector &&
-              renderFilterButton('Все задачи', counts.all, leftFilter === 'all', () => setLeftFilter('all'), ListChecks)}
-            {renderFilterButton('Мои задачи', counts.mine, leftFilter === 'mine', () => setLeftFilter('mine'), User)}
-            {renderFilterButton('Активные', counts.active, leftFilter === 'active', () => setLeftFilter('active'), Clock3)}
-            {renderFilterButton('Завершенные', counts.completed, leftFilter === 'completed', () => setLeftFilter('completed'), CheckCircle2)}
+      <div className={cn('clients-layout min-h-full', filtersOpen && 'is-open')}>
+        <button
+          type="button"
+          className={cn('filters-toggle', filtersOpen && 'is-active')}
+          onClick={() => setFiltersOpen((prev) => !prev)}
+          aria-label="Открыть фильтры"
+        >
+          <Filter className="h-4 w-4" />
+        </button>
+
+        <aside className={cn('filters-drawer', filtersOpen && 'is-open')}>
+          <div className="filters-drawer__header">
+            <span className="text-sm font-semibold">Фильтры</span>
+          </div>
+          <div className="filters-drawer__content custom-scrollbar">
+            <div className="glass-card rounded-[22px] p-4">
+              <div className="mt-2 space-y-2">
+                {isDirector &&
+                  renderFilterButton('Все задачи', counts.all, leftFilter === 'all', () => setLeftFilter('all'), ListChecks)}
+                {renderFilterButton('Мои задачи', counts.mine, leftFilter === 'mine', () => setLeftFilter('mine'), User)}
+                {renderFilterButton('Активные', counts.active, leftFilter === 'active', () => setLeftFilter('active'), Clock3)}
+                {renderFilterButton('Завершенные', counts.completed, leftFilter === 'completed', () => setLeftFilter('completed'), CheckCircle2)}
+              </div>
+            </div>
           </div>
         </aside>
 
-        <section className="col-span-12 xl:col-span-9 flex flex-col gap-4 min-h-0">
+        <section className="clients-main flex flex-col gap-4 min-h-0 min-w-0 animate-fade-up">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm text-muted-foreground">Всего задач: {filteredTasks.length}</p>
@@ -495,23 +511,32 @@ export default function Tasks() {
               >
                 <Flame className="h-4 w-4 fill-current" /> Срочные
               </button>
-              <button onClick={handleOpenCreate} className="ios-button-primary text-xs">
-                <Plus className="h-4 w-4" /> Поставить задачу
-              </button>
             </div>
           </div>
 
-          <div className="glass-card rounded-2xl overflow-hidden bg-muted/30">
+          <div className="glass-card rounded-[22px] p-4 overflow-hidden relative">
             <div className="h-[690px] max-h-[75vh] overflow-y-auto overflow-x-hidden custom-scrollbar">
-              <table className="w-full table-fixed border-separate border-spacing-y-2 text-sm">
+              <table className="service-table clients-table min-w-full table-fixed text-sm">
                 <thead className="sticky top-0 z-20">
-                  <tr className="bg-white/90 backdrop-blur-md">
-                    <th className="w-[32%] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Описание</th>
-                    <th className="w-[12%] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Дата создания</th>
-                    <th className="w-[12%] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Дедлайн</th>
-                    <th className="w-[14%] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Ответственный</th>
-                    <th className="w-[10%] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Статус</th>
-                    <th className="w-[18%] px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Комментарии</th>
+                  <tr className="table-head-row">
+                    <th className="table-head-cell table-head-cell--left w-[32%]">
+                      <span className="table-head-text">Описание</span>
+                    </th>
+                    <th className="table-head-cell table-head-cell--left w-[12%]">
+                      <span className="table-head-text">Дата создания</span>
+                    </th>
+                    <th className="table-head-cell table-head-cell--left w-[12%]">
+                      <span className="table-head-text">Дедлайн</span>
+                    </th>
+                    <th className="table-head-cell table-head-cell--left w-[14%]">
+                      <span className="table-head-text">Ответственный</span>
+                    </th>
+                    <th className="table-head-cell table-head-cell--left w-[10%]">
+                      <span className="table-head-text">Статус</span>
+                    </th>
+                    <th className="table-head-cell w-[18%]">
+                      <span className="table-head-text">Комментарии</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -522,9 +547,9 @@ export default function Tasks() {
                     <tr
                       key={task.id}
                       onClick={() => handleOpenDetail(task)}
-                      className="group cursor-pointer bg-white"
+                      className="group cursor-pointer transition-colors"
                     >
-                        <td className="bg-white px-4 py-3 transition-all duration-200 ease-out group-hover:bg-primary/10 group-hover:-translate-y-[2px]">
+                        <td className="table-cell-left px-4 py-3">
                           <div className="flex items-start gap-2 min-w-0">
                             {task.isUrgent && (
                               <Flame className="h-4 w-4 shrink-0 text-orange-500 fill-current" />
@@ -540,15 +565,15 @@ export default function Tasks() {
                             </div>
                           </div>
                         </td>
-                        <td className="text-sm text-muted-foreground bg-white px-4 py-3 transition-all duration-200 ease-out group-hover:bg-primary/10 group-hover:-translate-y-[2px]">{formatDate(task.createdAt)}</td>
-                        <td className="text-sm text-muted-foreground bg-white px-4 py-3 transition-all duration-200 ease-out group-hover:bg-primary/10 group-hover:-translate-y-[2px]">{task.dueDate ? formatDate(task.dueDate) : 'Без срока'}</td>
-                        <td className="text-sm text-foreground truncate bg-white px-4 py-3 transition-all duration-200 ease-out group-hover:bg-primary/10 group-hover:-translate-y-[2px]">{assigneeName}</td>
-                        <td className="bg-white px-4 py-3 transition-all duration-200 ease-out group-hover:bg-primary/10 group-hover:-translate-y-[2px]">
+                        <td className="table-cell-left px-4 py-3 text-sm text-muted-foreground">{formatDate(task.createdAt)}</td>
+                        <td className="table-cell-left px-4 py-3 text-sm text-muted-foreground">{task.dueDate ? formatDate(task.dueDate) : 'Без срока'}</td>
+                        <td className="table-cell-left px-4 py-3 text-sm text-foreground truncate">{assigneeName}</td>
+                        <td className="table-cell-left px-4 py-3">
                           <span className={cn('status-badge capitalize whitespace-nowrap', statusStyles[status])}>
                             {statusLabels[status]}
                           </span>
                         </td>
-                        <td className="text-center bg-white px-4 py-3 transition-all duration-200 ease-out group-hover:bg-primary/10 group-hover:-translate-y-[2px]">
+                        <td className="px-4 py-3 text-center">
                           <button
                             type="button"
                             onClick={(event) => {
@@ -1127,6 +1152,13 @@ export default function Tasks() {
           </div>
         </div>
       )}
+
+      <FloatingActionButton
+        onClick={handleOpenCreate}
+        offsetX={96}
+        offsetY={72}
+        ariaLabel="Поставить задачу"
+      />
     </AppLayout>
   );
 }
