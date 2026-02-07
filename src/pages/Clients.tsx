@@ -4,7 +4,9 @@ import { createPortal } from "react-dom";
 import {
   ArrowDown,
   ArrowUp,
+  Bell,
   ChevronRight,
+  Clock,
   Copy,
   FileSpreadsheet,
   Filter,
@@ -18,6 +20,7 @@ import {
   Search,
   SlidersHorizontal,
   Star,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -78,6 +81,15 @@ type ClientType = (typeof CLIENT_TYPES)[number];
 const COMMUNICATION_STATUS = ["none", "refused", "in_progress", "success"] as const;
 type CommunicationStatus = (typeof COMMUNICATION_STATUS)[number];
 
+type CommunicationResult = "success" | "failed";
+
+const COMMUNICATION_FAIL_REASONS = [
+  { value: "supplier", label: "Есть свой поставщик" },
+  { value: "not_using", label: "Не используют" },
+  { value: "closed", label: "Закрылись" },
+  { value: "expensive", label: "Дорого" },
+] as const;
+
 type ClientRecord = {
   id: string;
   name: string;
@@ -94,6 +106,8 @@ type ClientRecord = {
   sourceChannel?: string;
   lastCommunicationAt?: Date | null;
   nextCommunicationAt?: Date | null;
+  reminderAt?: Date | null;
+  communicationNote?: string;
   lastComment?: string;
   responsibleId?: string;
   responsibleName?: string;
@@ -101,14 +115,24 @@ type ClientRecord = {
   ownerName?: string;
   starred?: boolean;
   contacts?: ClientContact[];
-  comments?: { id: string; text: string; createdAt: Date; authorId?: string; authorName?: string }[];
+  comments?: {
+    id: string;
+    text: string;
+    createdAt: Date;
+    authorId?: string;
+    authorName?: string;
+    updatedAt?: Date;
+  }[];
+  allowManagerDeleteComments?: boolean;
   communications?: {
     id: string;
     scheduledAt: Date;
     note?: string;
-    closedAt?: Date | null;
+    status: "planned" | "closed";
     result?: "success" | "failed";
     reason?: string;
+    createdAt: Date;
+    closedAt?: Date | null;
   }[];
   deals?: {
     id: string;
@@ -120,7 +144,25 @@ type ClientRecord = {
     amount: number;
     comment?: string;
     declarationNumber?: string;
+    recipientName?: string;
+    recipientPhone?: string;
+    documents?: string[];
   }[];
+};
+
+type DealFormState = {
+  id?: string;
+  createdAt: string;
+  title: string;
+  unit: string;
+  qty: string;
+  price: string;
+  amount: string;
+  declarationNumber: string;
+  recipientName: string;
+  recipientPhone: string;
+  documents: string;
+  comment: string;
 };
 
 type ClientFilterKey =
@@ -163,6 +205,10 @@ const communicationStatusTone: Record<CommunicationStatus, string> = {
   success: "bg-emerald-100/70 text-emerald-700",
 };
 
+const communicationReasonLabel = Object.fromEntries(
+  COMMUNICATION_FAIL_REASONS.map((reason) => [reason.value, reason.label])
+) as Record<string, string>;
+
 const columnsOrderDefault = [
   "starred",
   "name",
@@ -195,41 +241,6 @@ const columnLabels: Record<ColumnKey, string> = {
   responsibleName: "Ответственный",
 };
 
-const SAMPLE_DEALS: NonNullable<ClientRecord["deals"]> = [
-  {
-    id: "deal-demo-1",
-    createdAt: new Date("2026-01-21T09:30:00"),
-    title: "Пакет Банан 4x6 (ПВД)",
-    unit: "шт.",
-    qty: 1200,
-    price: 0.9,
-    amount: 1080,
-    declarationNumber: "06532/22/01/000122",
-    comment: "Звонок по продлению договора.",
-  },
-  {
-    id: "deal-demo-2",
-    createdAt: new Date("2026-01-22T11:10:00"),
-    title: "Пакет Банан 4x6 (ПВД) 50 мкм",
-    unit: "кг",
-    qty: 100,
-    price: 0.32,
-    amount: 32,
-    declarationNumber: "06532/22/01/000123",
-    comment: "Ожидаем подтверждение объема.",
-  },
-  {
-    id: "deal-demo-3",
-    createdAt: new Date("2026-01-23T15:45:00"),
-    title: "Пакет Банан 4x6 (ПВД) усиленный",
-    unit: "м",
-    qty: 5000,
-    price: 0.19,
-    amount: 950,
-    declarationNumber: "06532/22/01/000124",
-    comment: "Нужен финальный расчет по логистике.",
-  },
-];
 
 const SOURCE_CHANNELS = ["Сайт", "Рекомендация", "Выставка", "Холодный звонок", "Партнер"] as const;
 const MOCK_ACTIVITIES = ["Аптеки", "Банки", "Прачечная", "HoReCa", "Строительство", "Ритейл"];
@@ -322,6 +333,29 @@ const getInitials = (value?: string) => {
     .join("");
 };
 
+const playReminderSound = () => {
+  try {
+    const AudioContextClass =
+      window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const audio = new AudioContextClass();
+    const oscillator = audio.createOscillator();
+    const gain = audio.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.value = 880;
+    gain.gain.value = 0.08;
+    oscillator.connect(gain);
+    gain.connect(audio.destination);
+    oscillator.start();
+    oscillator.stop(audio.currentTime + 0.25);
+    oscillator.onended = () => {
+      audio.close();
+    };
+  } catch {
+    // ignore
+  }
+};
+
 const useLocalStorageState = <T,>(key: string, initial: T) => {
   const [state, setState] = useState<T>(() => {
     try {
@@ -378,6 +412,8 @@ const buildMockClients = (count: number, employees: { id: string; name: string }
       sourceChannel,
       lastCommunicationAt,
       nextCommunicationAt,
+      reminderAt: null,
+      communicationNote: randomBool(0.35) ? "Нужна повторная встреча." : "",
       lastComment: randomBool(0.4) ? "Запросили презентацию." : "—",
       responsibleId: responsible?.id,
       responsibleName: responsible?.name,
@@ -385,6 +421,7 @@ const buildMockClients = (count: number, employees: { id: string; name: string }
       ownerName: responsible?.name,
       starred: randomBool(0.25),
       contacts,
+      allowManagerDeleteComments: false,
     });
   }
   return result;
@@ -393,7 +430,8 @@ const buildMockClients = (count: number, employees: { id: string; name: string }
 const getLastCommentText = (client: Client) => {
   if (!client.comments || client.comments.length === 0) return "—";
   const sorted = [...client.comments].sort(
-    (a, b) => toDate(b.createdAt)?.getTime()! - toDate(a.createdAt)?.getTime()!
+    (a, b) =>
+      (toDate(b.createdAt)?.getTime() ?? 0) - (toDate(a.createdAt)?.getTime() ?? 0)
   );
   return sorted[0]?.text || "—";
 };
@@ -420,6 +458,8 @@ const mapClientFromStore = (
     sourceChannel: client.sourceChannel,
     lastCommunicationAt: client.lastCommunicationAt ?? null,
     nextCommunicationAt: client.nextContactAt ?? null,
+    reminderAt: client.reminderAt ?? null,
+    communicationNote: client.notes ?? "",
     lastComment: getLastCommentText(client),
     responsibleId: client.responsibleId,
     responsibleName,
@@ -428,6 +468,9 @@ const mapClientFromStore = (
     starred: client.isFavorite ?? false,
     contacts: client.contacts,
     comments: client.comments,
+    allowManagerDeleteComments: client.allowManagerDeleteComments,
+    communications: client.communications ?? [],
+    deals: client.deals ?? [],
   };
 };
 
@@ -507,7 +550,7 @@ const ClientsPage = () => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [detailTab, setDetailTab] = useState<"deals" | "communications">("deals");
+  const [detailTab, setDetailTab] = useState<"deals" | "quotes">("deals");
   const suppressOpenRef = useRef(false);
   const suppressTimerRef = useRef<number | null>(null);
   const clearSelectionTimerRef = useRef<number | null>(null);
@@ -816,11 +859,20 @@ const ClientsPage = () => {
           id: "lastCommunicationAt",
           accessorKey: "lastCommunicationAt",
           header: () => <span className="table-head-text">Последняя коммуникация</span>,
-        cell: ({ getValue }) => (
-          <span className="text-sm text-foreground/80 whitespace-nowrap">
-            {formatDate(getValue<Date | string | null>())}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const client = row.original;
+          const note = (client.communicationNote || "").trim();
+          return (
+            <div className="flex flex-col gap-1">
+              <span className="text-sm text-foreground/80 whitespace-nowrap">
+                {formatDate(client.lastCommunicationAt ?? null)}
+              </span>
+              <span className="text-xs text-muted-foreground line-clamp-2">
+                {note || "—"}
+              </span>
+            </div>
+          );
+        },
       },
         {
           id: "lastComment",
@@ -838,7 +890,7 @@ const ClientsPage = () => {
           return (
             <CommentHoverTooltip
               text={hasComment ? value : "Комментарий отсутствует"}
-              onClick={() => handleOpenClient(row.original, "communications")}
+              onClick={() => handleOpenClient(row.original)}
             >
               <MessageCircle className="h-3.5 w-3.5 text-slate-500" />
               {short}
@@ -939,7 +991,7 @@ const ClientsPage = () => {
     suppressTimerRef.current = window.setTimeout(handleRelease, 350);
   };
 
-  const handleOpenClient = (client: ClientRecord, tab?: "deals" | "communications") => {
+  const handleOpenClient = (client: ClientRecord, tab?: "deals" | "quotes") => {
     if (suppressOpenRef.current) return;
     if (suppressPointerCleanupRef.current) {
       suppressPointerCleanupRef.current();
@@ -989,22 +1041,60 @@ const ClientsPage = () => {
     exportClientsToExcel(filteredClients);
   };
 
-  const reminderItems = useMemo(
-    () =>
-      filteredClients
-        .filter((client) => client.nextCommunicationAt)
-        .slice(0, 4)
-        .map((client) => ({
-          id: client.id,
-          title: client.name,
-          text: client.lastComment || "Напоминание",
-          time: formatDate(client.nextCommunicationAt || null),
-        })),
-    [filteredClients]
-  );
+  const [reminders, setReminders] = useState<
+    { id: string; title: string; text: string; time: string }[]
+  >([]);
+  const reminderTimersRef = useRef(new Map<string, number>());
 
-  const [reminders, setReminders] = useState(reminderItems);
-  useEffect(() => setReminders(reminderItems), [reminderItems]);
+  useEffect(() => {
+    const timers = reminderTimersRef.current;
+    const activeKeys = new Set<string>();
+    const now = Date.now();
+
+    storeClients.forEach((client) => {
+      if (!client.reminderAt) return;
+      const reminderTime = toDate(client.reminderAt)?.getTime();
+      if (!reminderTime) return;
+      const key = `${client.id}:${reminderTime}`;
+      activeKeys.add(key);
+      if (reminderTime <= now) return;
+      if (timers.has(key)) return;
+
+      const timeoutId = window.setTimeout(() => {
+        setReminders((prev) => [
+          ...prev,
+          {
+            id: key,
+            title: client.name,
+            text: client.notes || "Напоминание",
+            time: formatDateTime(client.reminderAt),
+          },
+        ]);
+        playReminderSound();
+        toast({
+          title: "Напоминание",
+          description: `${client.name} · ${client.notes || "Напоминание"}`,
+        });
+        timers.delete(key);
+        updateClient(client.id, { reminderAt: null });
+      }, reminderTime - now);
+
+      timers.set(key, timeoutId);
+    });
+
+    timers.forEach((timeoutId, key) => {
+      if (activeKeys.has(key)) return;
+      window.clearTimeout(timeoutId);
+      timers.delete(key);
+    });
+  }, [storeClients, updateClient]);
+
+  useEffect(() => {
+    return () => {
+      reminderTimersRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      reminderTimersRef.current.clear();
+    };
+  }, []);
 
   return (
     <AppLayout title="Клиенты" subtitle={`${filteredClients.length.toLocaleString()} клиентов`}>
@@ -1351,30 +1441,27 @@ const FilterRow = ({
 const clampValue = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
-  const ContactsCell = ({
-    contacts,
-    isOpen,
-    onOpen,
-    onClose,
-  }: {
+const ContactsCell = ({
+  contacts,
+  isOpen,
+  onOpen,
+  onClose,
+}: {
   contacts: ClientContact[];
   isOpen: boolean;
   onOpen: () => void;
   onClose: () => void;
-  }) => {
-    const previewContact = contacts[0];
-    const previewPhone = previewContact?.phones?.[0] ?? "—";
-    const extraContacts = contacts.slice(1);
-    const hasExtraContacts = extraContacts.length > 0;
-    const cellRef = useRef<HTMLDivElement | null>(null);
-    const triggerRef = useRef<HTMLButtonElement | null>(null);
-    const popoverRef = useRef<HTMLDivElement | null>(null);
-    const listRef = useRef<HTMLDivElement | null>(null);
-    const [popoverSize, setPopoverSize] = useState({ w: 280, h: 180 });
-
-    if (!contacts.length) {
-      return <span className="text-sm text-foreground/60">—</span>;
-    }
+}) => {
+  const previewContact = contacts[0];
+  const previewPhone = previewContact?.phones?.[0] ?? "—";
+  const extraContacts = contacts.slice(1);
+  const hasExtraContacts = extraContacts.length > 0;
+  const hasContacts = contacts.length > 0;
+  const cellRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [popoverSize, setPopoverSize] = useState({ w: 280, h: 180 });
 
     const handleCopy = (event: React.MouseEvent | React.KeyboardEvent, phone: string) => {
       event.stopPropagation();
@@ -1393,15 +1480,15 @@ const clampValue = (value: number, min: number, max: number) =>
     };
 
     useLayoutEffect(() => {
-      if (!isOpen || !popoverRef.current) return;
+      if (!isOpen || !hasContacts || !popoverRef.current) return;
       const rect = popoverRef.current.getBoundingClientRect();
       if (rect.width && rect.height) {
         setPopoverSize({ w: rect.width, h: rect.height });
       }
-    }, [isOpen, contacts.length]);
+    }, [isOpen, hasContacts, contacts.length]);
 
     useLayoutEffect(() => {
-      if (!isOpen || !listRef.current) return;
+      if (!isOpen || !hasContacts || !listRef.current) return;
       const listEl = listRef.current;
       const firstItem = listEl.querySelector<HTMLElement>(".contacts-popover__item");
       if (!firstItem) return;
@@ -1410,10 +1497,10 @@ const clampValue = (value: number, min: number, max: number) =>
       const gap = 8;
       const maxHeight = itemHeight * 3 + gap * 2;
       listEl.style.setProperty("--contacts-list-max-height", `${Math.round(maxHeight)}px`);
-    }, [isOpen, contacts.length]);
+    }, [isOpen, hasContacts, contacts.length]);
 
     useEffect(() => {
-      if (!isOpen) return;
+      if (!isOpen || !hasContacts) return;
       const handlePointerDown = (event: PointerEvent) => {
         const target = event.target as HTMLElement | null;
         if (!cellRef.current || !target) return;
@@ -1424,17 +1511,20 @@ const clampValue = (value: number, min: number, max: number) =>
       };
       window.addEventListener("pointerdown", handlePointerDown);
       return () => window.removeEventListener("pointerdown", handlePointerDown);
-    }, [isOpen, onClose]);
+    }, [isOpen, hasContacts, onClose]);
 
     useEffect(() => {
-      if (!isOpen) return;
+      if (!isOpen || !hasContacts) return;
       const handleKeyDown = (event: KeyboardEvent) => {
         if (event.key === "Escape") onClose();
       };
       window.addEventListener("keydown", handleKeyDown);
       return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [isOpen, onClose]);
+    }, [isOpen, hasContacts, onClose]);
 
+    if (!hasContacts) {
+      return <span className="text-sm text-foreground/60">—</span>;
+    }
 
     const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 0;
     const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 0;
@@ -1939,7 +2029,7 @@ const AddClientDialog = ({
           </div>
           <div className="space-y-3">
             {contacts.map((contact, index) => (
-              <div key={contact.id} className="rounded-xl border border-border/60 bg-white/60 p-3">
+              <div key={contact.id} className="rounded-xl border border-slate-200/60 bg-white/70 p-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Input
                     placeholder="ФИО"
@@ -2045,6 +2135,11 @@ const AddClientDialog = ({
                     .map((item) => item.trim())
                     .filter(Boolean),
                 })),
+                communications: [],
+                deals: [],
+                comments: [],
+                allowManagerDeleteComments: false,
+                notes: "",
               })
             }
             disabled={!form.name || !form.city || !form.clientType}
@@ -2074,7 +2169,7 @@ const ClientDetailSheet = ({
   onOpenChange: (open: boolean) => void;
   onPointerDownCapture?: () => void;
   client: ClientRecord | null;
-  initialTab?: "deals" | "communications";
+  initialTab?: "deals" | "quotes";
   employees: Employee[];
   updateClient: (id: string, data: Partial<Client>) => void;
   updateMockClient: (id: string, data: Partial<ClientRecord>) => void;
@@ -2082,45 +2177,80 @@ const ClientDetailSheet = ({
   currentUserName: string;
   isDirector: boolean;
 }) => {
-  if (!client) return null;
-  const [comments, setComments] = useState(client.comments ?? []);
+  const buildEmptyDealForm = (): DealFormState => ({
+    createdAt: format(new Date(), "yyyy-MM-dd"),
+    title: "",
+    unit: "",
+    qty: "",
+    price: "",
+    amount: "",
+    declarationNumber: "",
+    recipientName: "",
+    recipientPhone: "",
+    documents: "",
+    comment: "",
+  });
+  const activeClient = client ?? ({} as ClientRecord);
+
+  const [comments, setComments] = useState(activeClient.comments ?? []);
   const [commentInput, setCommentInput] = useState("");
-  const [note, setNote] = useState(client.lastComment ?? "");
-  const [draft, setDraft] = useState<ClientRecord>(client);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState("");
+  const [draft, setDraft] = useState<ClientRecord>(activeClient);
   const [isEditing, setIsEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"deals" | "communications">(
-    initialTab ?? "deals"
+  const [activeTab, setActiveTab] = useState<"deals" | "quotes">(initialTab ?? "deals");
+  const [allowManagerDelete, setAllowManagerDelete] = useState(
+    activeClient.allowManagerDeleteComments ?? false
   );
+  const [communications, setCommunications] = useState(activeClient.communications ?? []);
+  const [commNote, setCommNote] = useState(activeClient.communicationNote ?? "");
+  const [commDate, setCommDate] = useState(() => {
+    const next = toDate(activeClient.nextCommunicationAt ?? null);
+    return next ? format(next, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+  });
+  const [commTime, setCommTime] = useState(() => {
+    const next = toDate(activeClient.nextCommunicationAt ?? null);
+    return next ? format(next, "HH:mm") : "09:00";
+  });
+  const [closingCommId, setClosingCommId] = useState<string | null>(null);
+  const [closingResult, setClosingResult] = useState<CommunicationResult | null>(null);
+  const [closingReason, setClosingReason] = useState("");
+  const [reminderAt, setReminderAt] = useState<Date | null>(activeClient.reminderAt ?? null);
+  const [dealList, setDealList] = useState(activeClient.deals ?? []);
+  const [dealFormOpen, setDealFormOpen] = useState(false);
+  const [editingDealId, setEditingDealId] = useState<string | null>(null);
+  const [dealForm, setDealForm] = useState<DealFormState>(() => buildEmptyDealForm());
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !client) return;
     setComments(client.comments ?? []);
     setCommentInput("");
-    setNote(client.lastComment ?? "");
+    setEditingCommentId(null);
+    setEditingCommentText("");
     setDraft(client);
     setIsEditing(false);
     setActiveTab(initialTab ?? "deals");
+    setAllowManagerDelete(client.allowManagerDeleteComments ?? false);
+    setCommunications(client.communications ?? []);
+    setCommNote(client.communicationNote ?? "");
+    const next = toDate(client.nextCommunicationAt ?? null);
+    setCommDate(next ? format(next, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"));
+    setCommTime(next ? format(next, "HH:mm") : "09:00");
+    setClosingCommId(null);
+    setClosingResult(null);
+    setClosingReason("");
+    setReminderAt(client.reminderAt ?? null);
+    setDealList(client.deals ?? []);
+    setDealForm(buildEmptyDealForm());
+    setDealFormOpen(false);
+    setEditingDealId(null);
   }, [client, open, initialTab]);
 
-  const metaLine = [client.company, client.city, client.region].filter(Boolean).join(" • ");
-  const deals = client.deals && client.deals.length ? client.deals : SAMPLE_DEALS;
+  const metaLine = [draft.company, draft.city, draft.region].filter(Boolean).join(" • ");
   const contactList = draft.contacts ?? [];
-  const communications = client.communications ?? [];
-  const responsible = employees.find((emp) => emp.id === (client.responsibleId || client.ownerId));
-  const tabs = [
-    {
-      value: "deals",
-      label: "Сделки",
-      hint: "Просчеты и расчеты",
-      icon: FileSpreadsheet,
-    },
-    {
-      value: "communications",
-      label: "Коммуникации",
-      hint: "Лента и заметки",
-      icon: MessageCircle,
-    },
-  ];
+  const responsible = employees.find(
+    (emp) => emp.id === (draft.responsibleId || client.responsibleId || client.ownerId)
+  );
 
   const updateDraft = <K extends keyof ClientRecord>(key: K, value: ClientRecord[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -2164,26 +2294,286 @@ const ClientDetailSheet = ({
     }));
   };
 
+  const getLatestCommentText = (
+    items: { id: string; text: string; createdAt: Date }[]
+  ) => {
+    if (!items.length) return "—";
+    const sorted = [...items].sort(
+      (a, b) =>
+        (toDate(b.createdAt)?.getTime() ?? 0) - (toDate(a.createdAt)?.getTime() ?? 0)
+    );
+    return sorted[0]?.text || "—";
+  };
+
+  const persistComments = (nextComments: typeof comments) => {
+    setComments(nextComments);
+    if (client.id.startsWith("mock-")) {
+      updateMockClient(client.id, {
+        comments: nextComments,
+        lastComment: getLatestCommentText(nextComments),
+      });
+      return;
+    }
+    updateClient(client.id, { comments: nextComments });
+  };
+
   const handleAddComment = () => {
-    if (!commentInput.trim()) return;
+    const text = commentInput.trim();
+    if (!text) return;
     const next = {
       id: `comment-${Date.now()}`,
-      text: commentInput,
+      text,
       createdAt: new Date(),
       authorId: currentUserId,
       authorName: currentUserName,
     };
-    setComments((prev) => [next, ...prev]);
+    persistComments([next, ...comments]);
     setCommentInput("");
   };
 
   const handleDeleteComment = (id: string) => {
-    setComments((prev) => prev.filter((comment) => comment.id !== id));
+    persistComments(comments.filter((comment) => comment.id !== id));
+  };
+
+  const handleStartEditComment = (id: string, text: string) => {
+    setEditingCommentId(id);
+    setEditingCommentText(text);
+  };
+
+  const handleSaveEditedComment = () => {
+    if (!editingCommentId) return;
+    const text = editingCommentText.trim();
+    if (!text) return;
+    const next = comments.map((comment) =>
+      comment.id === editingCommentId ? { ...comment, text, updatedAt: new Date() } : comment
+    );
+    persistComments(next);
+    setEditingCommentId(null);
+    setEditingCommentText("");
+  };
+
+  const handleCancelEditComment = () => {
+    setEditingCommentId(null);
+    setEditingCommentText("");
+  };
+
+  const handleToggleAllowManagerDelete = (value: boolean) => {
+    setAllowManagerDelete(value);
+    if (client.id.startsWith("mock-")) {
+      updateMockClient(client.id, { allowManagerDeleteComments: value });
+      return;
+    }
+    updateClient(client.id, { allowManagerDeleteComments: value });
+  };
+
+  const parseNumber = (value: string) => {
+    const normalized = value.replace(/\s/g, "").replace(",", ".");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const persistDeals = (nextDeals: typeof dealList) => {
+    setDealList(nextDeals);
+    if (client.id.startsWith("mock-")) {
+      updateMockClient(client.id, { deals: nextDeals });
+      return;
+    }
+    updateClient(client.id, { deals: nextDeals });
+  };
+
+  const handleEditDeal = (deal: NonNullable<ClientRecord["deals"]>[number]) => {
+    setDealFormOpen(true);
+    setEditingDealId(deal.id);
+    setDealForm({
+      id: deal.id,
+      createdAt: format(toDate(deal.createdAt) ?? new Date(), "yyyy-MM-dd"),
+      title: deal.title,
+      unit: deal.unit,
+      qty: String(deal.qty ?? ""),
+      price: String(deal.price ?? ""),
+      amount: String(deal.amount ?? ""),
+      declarationNumber: deal.declarationNumber ?? "",
+      recipientName: deal.recipientName ?? "",
+      recipientPhone: deal.recipientPhone ?? "",
+      documents: (deal.documents ?? []).join(", "),
+      comment: deal.comment ?? "",
+    });
+  };
+
+  const handleDeleteDeal = (id: string) => {
+    persistDeals(dealList.filter((deal) => deal.id !== id));
+  };
+
+  const handleSaveDeal = () => {
+    if (!dealForm.title.trim()) return;
+    const qty = parseNumber(dealForm.qty);
+    const price = parseNumber(dealForm.price);
+    const amount = dealForm.amount.trim() ? parseNumber(dealForm.amount) : qty * price;
+    const createdAt = dealForm.createdAt ? new Date(`${dealForm.createdAt}T00:00:00`) : new Date();
+    const documents = dealForm.documents
+      .split(",")
+      .map((doc) => doc.trim())
+      .filter(Boolean);
+
+    const nextDeal = {
+      id: editingDealId ?? `deal-${Date.now()}`,
+      createdAt,
+      title: dealForm.title.trim(),
+      unit: dealForm.unit.trim() || "шт.",
+      qty,
+      price,
+      amount,
+      declarationNumber: dealForm.declarationNumber.trim() || undefined,
+      recipientName: dealForm.recipientName.trim() || undefined,
+      recipientPhone: dealForm.recipientPhone.trim() || undefined,
+      documents,
+      comment: dealForm.comment.trim() || undefined,
+    };
+
+    const nextDeals = editingDealId
+      ? dealList.map((deal) => (deal.id === editingDealId ? nextDeal : deal))
+      : [nextDeal, ...dealList];
+
+    persistDeals(nextDeals);
+    setDealForm(buildEmptyDealForm());
+    setDealFormOpen(false);
+    setEditingDealId(null);
+  };
+
+  const handleCancelDealForm = () => {
+    setDealForm(buildEmptyDealForm());
+    setDealFormOpen(false);
+    setEditingDealId(null);
+  };
+
+  const computeCommunicationMeta = (items: NonNullable<ClientRecord["communications"]>) => {
+    const planned = items.filter((item) => item.status === "planned");
+    const plannedDates = planned
+      .map((item) => toDate(item.scheduledAt))
+      .filter(Boolean) as Date[];
+    const next = plannedDates.sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+
+    const closed = items.filter((item) => item.status === "closed");
+    const closedWithTime = closed
+      .map((item) => ({
+        item,
+        time: toDate(item.closedAt ?? item.scheduledAt)?.getTime() ?? 0,
+      }))
+      .sort((a, b) => b.time - a.time);
+    const lastClosed = closedWithTime[0]?.item;
+    const last = lastClosed ? toDate(lastClosed.closedAt ?? lastClosed.scheduledAt) : null;
+
+    let status: CommunicationStatus = "none";
+    if (planned.length) status = "in_progress";
+    else if (lastClosed?.result === "success") status = "success";
+    else if (lastClosed?.result === "failed") status = "refused";
+
+    return { next, last, status };
+  };
+
+  const persistCommunications = (
+    nextCommunications: NonNullable<ClientRecord["communications"]>,
+    noteValue: string = commNote
+  ) => {
+    setCommunications(nextCommunications);
+    const { next, last, status } = computeCommunicationMeta(nextCommunications);
+    const trimmedNote = noteValue.trim();
+
+    if (client.id.startsWith("mock-")) {
+      updateMockClient(client.id, {
+        communications: nextCommunications,
+        nextCommunicationAt: next,
+        lastCommunicationAt: last,
+        status,
+        communicationNote: trimmedNote,
+      });
+    } else {
+      updateClient(client.id, {
+        communications: nextCommunications,
+        nextContactAt: next,
+        lastCommunicationAt: last,
+        communicationStatus: status,
+        notes: trimmedNote,
+      });
+    }
+
+    setDraft((prev) => ({
+      ...prev,
+      nextCommunicationAt: next,
+      lastCommunicationAt: last,
+      status,
+      communicationNote: trimmedNote,
+    }));
+  };
+
+  const handleScheduleCommunication = () => {
+    if (!commDate) return;
+    const scheduledAt = new Date(`${commDate}T${commTime || "09:00"}`);
+    const nextItem = {
+      id: `comm-${Date.now()}`,
+      scheduledAt,
+      note: commNote.trim() || undefined,
+      status: "planned" as const,
+      createdAt: new Date(),
+    };
+    const nextList = [nextItem, ...communications];
+    persistCommunications(nextList, commNote.trim());
+    toast({ title: "Коммуникация запланирована", description: formatDateTime(scheduledAt) });
+  };
+
+  const handleClearCommunicationForm = () => {
+    setCommNote("");
+    setCommDate(format(new Date(), "yyyy-MM-dd"));
+    setCommTime("09:00");
+  };
+
+  const handleStartCloseCommunication = (id: string) => {
+    setClosingCommId(id);
+    setClosingResult(null);
+    setClosingReason("");
+  };
+
+  const handleConfirmCloseCommunication = () => {
+    if (!closingCommId || !closingResult) return;
+    if (closingResult === "failed" && !closingReason) {
+      toast({ title: "Укажите причину", description: "Выберите причину отказа." });
+      return;
+    }
+    const nextList = communications.map((item) => {
+      if (item.id !== closingCommId) return item;
+      return {
+        ...item,
+        status: "closed" as const,
+        result: closingResult,
+        reason: closingResult === "failed" ? closingReason : undefined,
+        closedAt: new Date(),
+      };
+    });
+    persistCommunications(nextList);
+    setClosingCommId(null);
+    setClosingResult(null);
+    setClosingReason("");
+  };
+
+  const handleCancelCloseCommunication = () => {
+    setClosingCommId(null);
+    setClosingResult(null);
+    setClosingReason("");
+  };
+
+  const handleSetReminder = (minutes: number) => {
+    const time = new Date(Date.now() + minutes * 60000);
+    setReminderAt(time);
+    if (client.id.startsWith("mock-")) {
+      updateMockClient(client.id, { reminderAt: time });
+    } else {
+      updateClient(client.id, { reminderAt: time });
+    }
+    toast({ title: "Напоминание установлено", description: `Через ${minutes} мин.` });
   };
 
   const handleCancelEdit = () => {
     setDraft(client);
-    setNote(client.lastComment ?? "");
     setIsEditing(false);
   };
 
@@ -2204,7 +2594,6 @@ const ClientDetailSheet = ({
       updateMockClient(client.id, {
         ...draft,
         responsibleName,
-        lastComment: note,
         contacts: cleanedContacts,
       });
     } else {
@@ -2220,21 +2609,25 @@ const ClientDetailSheet = ({
         productCategory: draft.productCategory,
         clientType: draft.clientType,
         responsibleId: draft.responsibleId,
-        communicationStatus: draft.status,
         sourceChannel: draft.sourceChannel,
         contacts: cleanedContacts,
       };
-      const trimmedNote = note.trim();
-      if (trimmedNote && trimmedNote !== (client.lastComment ?? "").trim()) {
-        updates.comments = [
-          ...(client.comments ?? []),
-          { id: `comment-${Date.now()}`, text: trimmedNote, createdAt: new Date() },
-        ];
-      }
       updateClient(client.id, updates);
     }
     setIsEditing(false);
   };
+
+  const sortedCommunications = [...communications].sort(
+    (a, b) =>
+      (toDate(b.scheduledAt)?.getTime() ?? 0) - (toDate(a.scheduledAt)?.getTime() ?? 0)
+  );
+
+  const sortedComments = [...comments].sort(
+    (a, b) =>
+      (toDate(b.createdAt)?.getTime() ?? 0) - (toDate(a.createdAt)?.getTime() ?? 0)
+  );
+
+  if (!client) return null;
 
   return (
     <Dialog
@@ -2245,76 +2638,77 @@ const ClientDetailSheet = ({
       }}
     >
       <DialogContent
-        className="client-details-modal modal-surface flex max-h-[90vh] w-[min(96vw,1280px)] max-w-6xl flex-col overflow-hidden rounded-[28px] p-6 bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-100/50 !translate-x-[-50%] !translate-y-[-50%] data-[state=open]:animate-none data-[state=closed]:animate-none"
+        className="client-details-modal modal-surface flex max-h-[92vh] w-[min(96vw,1280px)] max-w-6xl flex-col overflow-hidden rounded-[20px] border border-slate-200/60 bg-slate-50 p-6 !translate-x-[-50%] !translate-y-[-50%] data-[state=open]:animate-none data-[state=closed]:animate-none"
         onPointerDownCapture={onPointerDownCapture}
         onPointerDownOutside={onPointerDownCapture}
       >
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-sky-200/40 blur-3xl" />
-          <div className="absolute top-32 -left-24 h-72 w-72 rounded-full bg-rose-200/30 blur-3xl" />
-          <div className="absolute bottom-0 right-24 h-56 w-56 rounded-full bg-emerald-200/30 blur-3xl" />
-        </div>
         <div className="relative flex min-h-0 flex-col gap-6">
-          <div className="glass-panel rounded-[24px] p-4 sm:p-5 flex flex-wrap items-start justify-between gap-4 animate-fade-up">
-            <div className="min-w-[240px] space-y-2">
-              {isEditing ? (
-                <div className="space-y-2">
-                  <Input
-                    className="h-10 text-lg font-semibold"
-                    value={draft.name}
-                    onChange={(event) => updateDraft("name", event.target.value)}
-                    placeholder="Название клиента"
-                  />
-                  <Input
-                    className="h-9"
-                    value={draft.company ?? ""}
-                    onChange={(event) => updateDraft("company", event.target.value)}
-                    placeholder="Компания"
-                  />
-                  <Select
-                    value={draft.clientType ?? "none"}
-                    onValueChange={(value) =>
-                      updateDraft("clientType", value === "none" ? undefined : (value as ClientType))
-                    }
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Тип клиента" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Без типа</SelectItem>
-                      {CLIENT_TYPES.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {clientTypeLabel[type]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <>
-                  <DialogTitle className="text-2xl">{client.name}</DialogTitle>
-                  <p className="text-sm text-muted-foreground">{metaLine || "Карточка клиента"}</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {client.clientType && (
-                      <Badge className={cn("text-xs shadow-sm", clientTypeTone[client.clientType])}>
-                        {clientTypeLabel[client.clientType]}
-                      </Badge>
-                    )}
-                    {client.activityType && (
-                      <Badge variant="secondary" className="text-xs shadow-sm">
-                        {client.activityType}
-                      </Badge>
-                    )}
-                    {client.productCategory && (
-                      <Badge variant="secondary" className="text-xs shadow-sm">
-                        {client.productCategory}
-                      </Badge>
-                    )}
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200/60 pb-4">
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 rounded-[10px] border border-slate-200/60 bg-white/70" />
+              <div className="space-y-2">
+                {isEditing ? (
+                  <div className="space-y-2">
+                    <Input
+                      className="h-10 text-lg font-semibold"
+                      value={draft.name}
+                      onChange={(event) => updateDraft("name", event.target.value)}
+                      placeholder="Название клиента"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <Input
+                        className="h-9 min-w-[220px]"
+                        value={draft.company ?? ""}
+                        onChange={(event) => updateDraft("company", event.target.value)}
+                        placeholder="Компания"
+                      />
+                      <Select
+                        value={draft.clientType ?? "none"}
+                        onValueChange={(value) =>
+                          updateDraft("clientType", value === "none" ? undefined : (value as ClientType))
+                        }
+                      >
+                        <SelectTrigger className="h-9 min-w-[180px]">
+                          <SelectValue placeholder="Тип клиента" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Без типа</SelectItem>
+                          {CLIENT_TYPES.map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {clientTypeLabel[type]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                </>
-              )}
+                ) : (
+                  <>
+                    <DialogTitle className="text-2xl font-semibold">{client.name}</DialogTitle>
+                    <p className="text-xs text-muted-foreground">{metaLine || "Карточка клиента"}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {client.clientType && (
+                        <Badge className={cn("text-xs", clientTypeTone[client.clientType])}>
+                          {clientTypeLabel[client.clientType]}
+                        </Badge>
+                      )}
+                      {client.activityType && (
+                        <Badge variant="secondary" className="text-xs">
+                          {client.activityType}
+                        </Badge>
+                      )}
+                      {client.productCategory && (
+                        <Badge variant="secondary" className="text-xs">
+                          {client.productCategory}
+                        </Badge>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <ReminderDropdown onSelect={handleSetReminder} label="Напоминание +" />
               {isEditing ? (
                 <>
                   <Button size="sm" onClick={handleSave} disabled={!draft.name?.trim()}>
@@ -2335,140 +2729,513 @@ const ClientDetailSheet = ({
 
           <Tabs
             value={activeTab}
-            onValueChange={(value) => setActiveTab(value as "deals" | "communications")}
+            onValueChange={(value) => setActiveTab(value as "deals" | "quotes")}
             className="flex min-h-0 flex-1 flex-col"
           >
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 xl:grid-cols-[1.65fr,0.95fr]">
-              <div className="flex min-h-0 flex-col">
-                <TabsList className="grid h-auto w-full shrink-0 grid-cols-1 gap-3 bg-transparent p-0 sm:grid-cols-2 animate-fade-up">
-                  {tabs.map((tab) => {
-                    const Icon = tab.icon;
-                    return (
-                      <TabsTrigger
-                        key={tab.value}
-                        value={tab.value}
-                        className="group h-auto w-full flex-col items-start justify-start gap-2 rounded-[18px] border border-transparent bg-white/70 px-4 py-3 text-left text-foreground shadow-sm transition hover:-translate-y-0.5 hover:bg-white/90 data-[state=active]:border-primary/40 data-[state=active]:bg-white data-[state=active]:shadow-lg"
-                      >
-                        <div className="flex items-center gap-2 text-sm font-semibold">
-                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-sky-600 shadow-inner">
-                            <Icon className="h-4 w-4" />
-                          </span>
-                          {tab.label}
-                        </div>
-                        <span className="text-xs text-muted-foreground">{tab.hint}</span>
-                      </TabsTrigger>
-                    );
-                  })}
+            <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-6 xl:grid-cols-[1.65fr,0.95fr]">
+              <div className="flex min-h-0 min-w-0 flex-col">
+                <TabsList className="grid h-auto w-full grid-cols-1 gap-3 bg-transparent p-0 sm:grid-cols-2">
+                  <TabsTrigger
+                    value="quotes"
+                    className="flex w-full items-center justify-between gap-2 rounded-[12px] border border-transparent bg-white/70 px-4 py-3 text-left text-sm font-medium text-foreground/80 shadow-sm transition hover:bg-white data-[state=active]:border-slate-200/70 data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow"
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileSpreadsheet className="h-4 w-4" />
+                      Просчеты
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                      0
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="deals"
+                    className="flex w-full items-center justify-between gap-2 rounded-[12px] border border-transparent bg-white/70 px-4 py-3 text-left text-sm font-medium text-foreground/80 shadow-sm transition hover:bg-white data-[state=active]:border-slate-200/70 data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow"
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileSpreadsheet className="h-4 w-4" />
+                      Сделки
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                      {dealList.length}
+                    </span>
+                  </TabsTrigger>
                 </TabsList>
 
                 <div className="mt-4 flex-1 min-h-0 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
+                <TabsContent value="quotes" className="mt-0 space-y-4">
+                  <InfoCard title="Просчеты">
+                    <p className="text-sm text-muted-foreground">Просчетов пока нет.</p>
+                  </InfoCard>
+                </TabsContent>
+
                 <TabsContent value="deals" className="mt-0 space-y-4">
-                  <InfoCard title="Сделки">
+                  <InfoCard
+                    title="Сделки"
+                    titleAddon={
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() =>
+                          setDealFormOpen((prev) => {
+                            const next = !prev;
+                            if (next) {
+                              setEditingDealId(null);
+                              setDealForm(buildEmptyDealForm());
+                            }
+                            return next;
+                          })
+                        }
+                      >
+                        Добавить +
+                      </Button>
+                    }
+                  >
+                    {dealFormOpen && (
+                      <div className="rounded-[12px] border border-slate-200/60 bg-white/70 p-3">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <Input
+                            type="date"
+                            className="h-9"
+                            value={dealForm.createdAt}
+                            onChange={(event) =>
+                              setDealForm((prev) => ({ ...prev, createdAt: event.target.value }))
+                            }
+                          />
+                          <Input
+                            className="h-9"
+                            placeholder="Наименование"
+                            value={dealForm.title}
+                            onChange={(event) =>
+                              setDealForm((prev) => ({ ...prev, title: event.target.value }))
+                            }
+                          />
+                          <Input
+                            className="h-9"
+                            placeholder="Ед. измерения"
+                            value={dealForm.unit}
+                            onChange={(event) =>
+                              setDealForm((prev) => ({ ...prev, unit: event.target.value }))
+                            }
+                          />
+                          <Input
+                            className="h-9"
+                            placeholder="Количество"
+                            value={dealForm.qty}
+                            onChange={(event) =>
+                              setDealForm((prev) => ({ ...prev, qty: event.target.value }))
+                            }
+                          />
+                          <Input
+                            className="h-9"
+                            placeholder="Цена"
+                            value={dealForm.price}
+                            onChange={(event) =>
+                              setDealForm((prev) => ({ ...prev, price: event.target.value }))
+                            }
+                          />
+                          <Input
+                            className="h-9"
+                            placeholder="Сумма"
+                            value={dealForm.amount}
+                            onChange={(event) =>
+                              setDealForm((prev) => ({ ...prev, amount: event.target.value }))
+                            }
+                          />
+                          <Input
+                            className="h-9"
+                            placeholder="Номер декларации"
+                            value={dealForm.declarationNumber}
+                            onChange={(event) =>
+                              setDealForm((prev) => ({ ...prev, declarationNumber: event.target.value }))
+                            }
+                          />
+                          <Input
+                            className="h-9"
+                            placeholder="Получатель"
+                            value={dealForm.recipientName}
+                            onChange={(event) =>
+                              setDealForm((prev) => ({ ...prev, recipientName: event.target.value }))
+                            }
+                          />
+                          <Input
+                            className="h-9"
+                            placeholder="Телефон получателя"
+                            value={dealForm.recipientPhone}
+                            onChange={(event) =>
+                              setDealForm((prev) => ({ ...prev, recipientPhone: event.target.value }))
+                            }
+                          />
+                          <Input
+                            className="h-9"
+                            placeholder="Документы (через запятую)"
+                            value={dealForm.documents}
+                            onChange={(event) =>
+                              setDealForm((prev) => ({ ...prev, documents: event.target.value }))
+                            }
+                          />
+                          <Input
+                            className="h-9"
+                            placeholder="Комментарий"
+                            value={dealForm.comment}
+                            onChange={(event) =>
+                              setDealForm((prev) => ({ ...prev, comment: event.target.value }))
+                            }
+                          />
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button size="sm" onClick={handleSaveDeal}>
+                            {editingDealId ? "Сохранить" : "Добавить"}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={handleCancelDealForm}>
+                            Отмена
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse text-sm">
                         <thead>
-                          <tr className="border-b border-border/60 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                          <tr className="border-b border-slate-200/70 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                             <th className="px-3 py-2 text-left">Дата</th>
                             <th className="px-3 py-2 text-left">Товар / услуга</th>
                             <th className="px-3 py-2 text-left">Ед.</th>
                             <th className="px-3 py-2 text-left">Кол-во</th>
                             <th className="px-3 py-2 text-left">Цена</th>
                             <th className="px-3 py-2 text-left">№ дек.</th>
+                            <th className="px-3 py-2 text-left">Документы</th>
                             <th className="px-3 py-2 text-left">Комментарий</th>
-                            <th className="px-3 py-2 text-left">Сумма</th>
+                            <th className="px-3 py-2 text-right">Сумма</th>
+                            <th className="px-3 py-2 text-right"></th>
                           </tr>
                         </thead>
                         <tbody>
-                          {deals.map((deal) => (
-                            <tr key={deal.id} className="border-b border-border/50 last:border-b-0">
-                              <td className="px-3 py-3 text-xs text-muted-foreground">
-                                {formatDate(deal.createdAt)}
+                          {dealList.length ? (
+                            dealList.map((deal) => (
+                              <tr key={deal.id} className="border-b border-slate-200/60 last:border-b-0">
+                                <td className="px-3 py-3 text-xs text-muted-foreground">
+                                  {formatDate(deal.createdAt)}
+                                </td>
+                                <td className="px-3 py-3">
+                                  <div className="text-sm font-medium text-foreground">{deal.title}</div>
+                                </td>
+                                <td className="px-3 py-3 text-xs text-muted-foreground">{deal.unit}</td>
+                                <td className="px-3 py-3 text-sm">{formatAmount(deal.qty)}</td>
+                                <td className="px-3 py-3 text-sm">{formatAmount(deal.price)}</td>
+                                <td className="px-3 py-3 text-xs text-muted-foreground">
+                                  <div>{deal.declarationNumber || "—"}</div>
+                                  {deal.recipientName && (
+                                    <div className="mt-1 text-xs text-foreground">{deal.recipientName}</div>
+                                  )}
+                                  {deal.recipientPhone && (
+                                    <div className="text-[11px] text-muted-foreground">{deal.recipientPhone}</div>
+                                  )}
+                                </td>
+                                <td className="px-3 py-3">
+                                  {deal.documents && deal.documents.length ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {deal.documents.map((doc) => (
+                                        <span
+                                          key={doc}
+                                          className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600"
+                                        >
+                                          {doc}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-3 text-sm">{deal.comment || "—"}</td>
+                                <td className="px-3 py-3 text-right text-sm font-semibold">
+                                  {formatAmount(deal.amount)}
+                                </td>
+                                <td className="px-3 py-3 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/60 text-muted-foreground transition hover:bg-slate-50/80"
+                                      onClick={() => handleEditDeal(deal)}
+                                      aria-label="Редактировать"
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/60 text-rose-500 transition hover:bg-rose-50/80"
+                                      onClick={() => handleDeleteDeal(deal.id)}
+                                      aria-label="Удалить"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={10} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                                Сделок пока нет.
                               </td>
-                              <td className="px-3 py-3">
-                                <div className="text-sm font-medium text-foreground">{deal.title}</div>
-                              </td>
-                              <td className="px-3 py-3 text-xs text-muted-foreground">{deal.unit}</td>
-                              <td className="px-3 py-3 text-sm">{formatAmount(deal.qty)}</td>
-                              <td className="px-3 py-3 text-sm">{formatAmount(deal.price)}</td>
-                              <td className="px-3 py-3 text-xs text-muted-foreground">
-                                {deal.declarationNumber || "—"}
-                              </td>
-                              <td className="px-3 py-3 text-sm">{deal.comment || "—"}</td>
-                              <td className="px-3 py-3 text-sm font-semibold">{formatAmount(deal.amount)}</td>
                             </tr>
-                          ))}
+                          )}
                         </tbody>
                       </table>
                     </div>
                   </InfoCard>
-                </TabsContent>
-
-                <TabsContent value="communications" className="mt-0 space-y-4">
-                  <InfoCard title="План коммуникации">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <InfoRow label="Следующая связь" value={formatDateTime(client.nextCommunicationAt)} />
-                      <InfoRow label="Последняя связь" value={formatDateTime(client.lastCommunicationAt)} />
-                    </div>
-                    <div className="mt-3">
-                      <p className="text-xs text-muted-foreground">Шпаргалка</p>
-                      <Input
-                        className="mt-2"
-                        placeholder="Короткая заметка для звонка"
-                        value={note}
-                        onChange={(event) => setNote(event.target.value)}
+                  <InfoCard
+                    title="Комментарии"
+                  >
+                    <div className="space-y-3">
+                      <textarea
+                        className="ios-input min-h-[90px]"
+                        placeholder="Добавить комментарий"
+                        value={commentInput}
+                        onChange={(event) => setCommentInput(event.target.value)}
                       />
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Button size="sm" variant="secondary">
-                        Закрыть коммуникацию
-                      </Button>
-                      <Button size="sm" variant="secondary">
-                        Перенести
-                      </Button>
-                      <ReminderDropdown
-                        onSelect={(minutes) => {
-                          toast({
-                            title: "Напоминание установлено",
-                            description: `Через ${minutes} мин.`,
-                          });
-                        }}
-                      />
-                    </div>
-                  </InfoCard>
-
-                  <InfoCard title="История коммуникаций">
-                    {communications.length ? (
-                      <div className="space-y-2">
-                        {communications.map((item) => (
-                          <div key={item.id} className="rounded-xl bg-white/70 px-3 py-2 text-sm">
-                            <p className="font-medium">{formatDateTime(item.scheduledAt)}</p>
-                            <p className="text-xs text-muted-foreground">{item.note || "—"}</p>
-                          </div>
-                        ))}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <Button size="sm" onClick={handleAddComment}>
+                          Добавить
+                        </Button>
                       </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">История пока пуста.</p>
-                    )}
+                      <div className="space-y-3 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+                        {sortedComments.length ? (
+                          sortedComments.map((comment) => {
+                            const authorName =
+                              comment.authorName || client.responsibleName || currentUserName || "Менеджер";
+                            const canEdit = isDirector || comment.authorId === currentUserId;
+                            const canDelete =
+                              isDirector || (allowManagerDelete && comment.authorId === currentUserId);
+                            return (
+                              <div
+                                key={comment.id}
+                                className="rounded-[12px] border border-slate-200/60 bg-white/70 px-3 py-2"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="text-xs text-muted-foreground">
+                                    <span className="font-semibold text-foreground">{authorName}</span>
+                                    <span className="ml-2">{formatDateTime(comment.createdAt)}</span>
+                                    {comment.updatedAt && <span className="ml-2">(изменено)</span>}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {canEdit && (
+                                      <button
+                                        type="button"
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/60 text-muted-foreground transition hover:bg-slate-50/80"
+                                        onClick={() => handleStartEditComment(comment.id, comment.text)}
+                                        aria-label="Редактировать"
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </button>
+                                    )}
+                                    {canDelete && (
+                                      <button
+                                        type="button"
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/60 text-rose-500 transition hover:bg-rose-50/80"
+                                        onClick={() => handleDeleteComment(comment.id)}
+                                        aria-label="Удалить"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                                {editingCommentId === comment.id ? (
+                                  <div className="mt-2 space-y-2">
+                                    <textarea
+                                      className="ios-input min-h-[70px]"
+                                      value={editingCommentText}
+                                      onChange={(event) => setEditingCommentText(event.target.value)}
+                                    />
+                                    <div className="flex gap-2">
+                                      <Button size="sm" onClick={handleSaveEditedComment}>
+                                        Сохранить
+                                      </Button>
+                                      <Button size="sm" variant="ghost" onClick={handleCancelEditComment}>
+                                        Отмена
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="mt-2 text-sm text-foreground">{comment.text}</p>
+                                )}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Комментариев нет.</p>
+                        )}
+                      </div>
+                    </div>
                   </InfoCard>
-
-                  <CommentsTimeline
-                    title="Лента общения"
-                    items={comments}
-                    value={commentInput}
-                    onChange={setCommentInput}
-                    onSubmit={handleAddComment}
-                    onDelete={handleDeleteComment}
-                    currentUserName={currentUserName}
-                    currentUserId={currentUserId}
-                    isDirector={isDirector}
-                    fallbackAuthorName={client.responsibleName || currentUserName}
-                  />
                 </TabsContent>
 
                 </div>
               </div>
 
-              <div className="space-y-4 min-h-0 overflow-y-auto pr-2 custom-scrollbar">
+              <div className="client-details-side flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
+                <InfoCard
+                  title="Коммуникация"
+                  titleAddon={
+                    <Button
+                      size="icon"
+                      variant="secondary"
+                      className="h-8 w-8"
+                      onClick={() => handleScheduleCommunication()}
+                      aria-label="Запланировать"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  }
+                >
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <Input
+                        type="date"
+                        className="h-9"
+                        value={commDate}
+                        onChange={(event) => setCommDate(event.target.value)}
+                      />
+                      <Input
+                        type="time"
+                        className="h-9"
+                        value={commTime}
+                        onChange={(event) => setCommTime(event.target.value)}
+                      />
+                    </div>
+                    <Input
+                      className="h-9"
+                      placeholder="Короткая заметка для коммуникации"
+                      value={commNote}
+                      onChange={(event) => setCommNote(event.target.value)}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" onClick={handleScheduleCommunication}>
+                        Запланировать
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={handleClearCommunicationForm}>
+                        Очистить
+                      </Button>
+                    </div>
+
+                    <div className="rounded-[10px] bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3.5 w-3.5" />
+                        <span>
+                          Следующая коммуникация: {formatDateTime(draft.nextCommunicationAt ?? null)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {reminderAt && (
+                      <div className="rounded-[10px] bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <Bell className="h-3.5 w-3.5" />
+                          <span>Напоминание: {formatDateTime(reminderAt)}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2">
+                      {[5, 10, 20, 30].map((minutes) => (
+                        <Button key={minutes} size="sm" variant="secondary" onClick={() => handleSetReminder(minutes)}>
+                          {minutes} мин
+                        </Button>
+                      ))}
+                    </div>
+
+                    <div className="mt-1 flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar overscroll-auto space-y-2">
+                      {sortedCommunications.length ? (
+                        sortedCommunications.map((item) => {
+                          const isPlanned = item.status === "planned";
+                          const isSuccess = item.result === "success";
+                          const badgeClass = isPlanned
+                            ? "bg-amber-100 text-amber-700"
+                            : isSuccess
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-rose-100 text-rose-700";
+                          const badgeLabel = isPlanned
+                            ? "В работе"
+                            : isSuccess
+                            ? "Завершено удачно"
+                            : "Завершено неудачно";
+
+                          return (
+                            <div key={item.id} className="rounded-[10px] bg-slate-50 px-3 py-2 text-xs">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-semibold text-foreground">
+                                  {formatDateTime(item.scheduledAt)}
+                                </span>
+                                <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", badgeClass)}>
+                                  {badgeLabel}
+                                </span>
+                              </div>
+                              {item.note && <p className="mt-1 text-xs text-muted-foreground">{item.note}</p>}
+                              {item.status === "closed" && item.result === "failed" && item.reason && (
+                                <p className="mt-1 text-[11px] text-rose-500">
+                                  Причина: {communicationReasonLabel[item.reason] ?? item.reason}
+                                </p>
+                              )}
+                              {isPlanned && (
+                                <div className="mt-2">
+                                  <Button size="sm" variant="outline" onClick={() => handleStartCloseCommunication(item.id)}>
+                                    Закрыть
+                                  </Button>
+                                </div>
+                              )}
+                              {closingCommId === item.id && (
+                                <div className="mt-2 rounded-[10px] border border-slate-200/60 bg-white/70 p-2">
+                                  <div className="flex flex-wrap gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant={closingResult === "success" ? "default" : "secondary"}
+                                      onClick={() => setClosingResult("success")}
+                                    >
+                                      Завершено удачно
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant={closingResult === "failed" ? "default" : "secondary"}
+                                      onClick={() => setClosingResult("failed")}
+                                    >
+                                      Завершено неудачно
+                                    </Button>
+                                  </div>
+                                  {closingResult === "failed" && (
+                                    <div className="mt-2 space-y-1">
+                                      {COMMUNICATION_FAIL_REASONS.map((reason) => (
+                                        <label key={reason.value} className="flex items-center gap-2 text-xs">
+                                          <input
+                                            type="radio"
+                                            name={`reason-${item.id}`}
+                                            checked={closingReason === reason.value}
+                                            onChange={() => setClosingReason(reason.value)}
+                                          />
+                                          {reason.label}
+                                        </label>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <div className="mt-2 flex gap-2">
+                                    <Button size="sm" onClick={handleConfirmCloseCommunication}>
+                                      Сохранить
+                                    </Button>
+                                    <Button size="sm" variant="ghost" onClick={handleCancelCloseCommunication}>
+                                      Отмена
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Коммуникаций нет.</p>
+                      )}
+                    </div>
+                  </div>
+                </InfoCard>
                 <InfoCard title="Ответственный" className="animate-fade-up">
                   {responsible ? (
                     <div className="space-y-3">
@@ -2481,37 +3248,35 @@ const ClientDetailSheet = ({
                           <p className="text-xs text-muted-foreground">{responsible.position || "—"}</p>
                         </div>
                       </div>
-                      {responsible.email && (
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-white/70 px-3 py-1 text-xs text-muted-foreground shadow-sm transition hover:bg-white hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                          onClick={() => {
-                            navigator.clipboard.writeText(responsible.email || "");
-                            toast({ title: "Email скопирован", description: responsible.email });
-                          }}
-                        >
-                          <Mail className="h-3.5 w-3.5" />
-                          <span>{responsible.email}</span>
-                        </button>
-                      )}
-                      {responsible.phones?.length ? (
-                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {responsible.phones.map((phone) => (
-                            <button
-                              key={phone}
-                              type="button"
-                              className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-white/70 px-3 py-1 shadow-sm transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
-                              onClick={() => {
-                                navigator.clipboard.writeText(phone);
-                                toast({ title: "Телефон скопирован", description: phone });
-                              }}
-                            >
-                              <Phone className="h-3 w-3" />
-                              {phone}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        {responsible.email && (
+                          <button
+                            type="button"
+                            className="flex items-center gap-2 text-left transition hover:text-foreground"
+                            onClick={() => {
+                              navigator.clipboard.writeText(responsible.email || "");
+                              toast({ title: "Email скопирован", description: responsible.email });
+                            }}
+                          >
+                            <Mail className="h-3.5 w-3.5" />
+                            <span>{responsible.email}</span>
+                          </button>
+                        )}
+                        {responsible.phones?.map((phone) => (
+                          <button
+                            key={phone}
+                            type="button"
+                            className="flex items-center gap-2 text-left transition hover:text-foreground"
+                            onClick={() => {
+                              navigator.clipboard.writeText(phone);
+                              toast({ title: "Телефон скопирован", description: phone });
+                            }}
+                          >
+                            <Phone className="h-3.5 w-3.5" />
+                            <span>{phone}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">Ответственный не назначен.</p>
@@ -2525,7 +3290,7 @@ const ClientDetailSheet = ({
                         contactList.map((contact, index) => (
                           <div
                             key={contact.id}
-                            className="rounded-2xl border border-border/60 bg-white/70 p-3 space-y-2"
+                            className="rounded-2xl border border-slate-200/60 bg-white/70 p-3 space-y-2"
                           >
                             <div className="flex items-start justify-between gap-2">
                               <Input
@@ -2590,47 +3355,42 @@ const ClientDetailSheet = ({
                       </Button>
                     </div>
                   ) : (
-                    <Collapsible defaultOpen={false}>
-                    <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl border border-border/60 bg-white/70 px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:bg-white collapsible-trigger">
-                      Показать контакты
-                      <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="mt-3 space-y-3 collapsible-content">
-                        {contactList.length ? (
-                          <div className="space-y-3">
-                            {contactList.map((contact) => (
-                              <div key={contact.id} className="rounded-2xl border border-border/60 bg-white/70 p-3">
-                                <div className="flex items-start gap-3">
-                                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-xs font-semibold text-primary">
-                                    {getInitials(contact.name)}
-                                  </div>
-                                  <div className="flex-1 space-y-1">
-                                    <p className="text-sm font-semibold">{contact.name}</p>
-                                    <p className="text-xs text-muted-foreground">{contact.position || "—"}</p>
-                                    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                                      {contact.phones.map((phone) => (
-                                        <div key={phone} className="flex items-center gap-2">
-                                          <Phone className="h-3.5 w-3.5" />
-                                          <span>{phone}</span>
-                                        </div>
-                                      ))}
-                                      {contact.emails.map((email) => (
-                                        <div key={email} className="flex items-center gap-2">
-                                          <Mail className="h-3.5 w-3.5" />
-                                          <span>{email}</span>
-                                        </div>
-                                      ))}
+                    <div className="space-y-3">
+                      {contactList.length ? (
+                        contactList.map((contact) => (
+                          <div key={contact.id} className="rounded-[10px] bg-slate-50 px-3 py-2">
+                            <div className="flex items-start gap-3">
+                              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-primary/10 text-xs font-semibold text-primary">
+                                {getInitials(contact.name)}
+                              </div>
+                              <div className="flex-1 space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-sm font-semibold text-foreground">{contact.name}</p>
+                                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                </div>
+                                <p className="text-xs text-muted-foreground">{contact.position || "—"}</p>
+                                <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                                  {contact.phones.map((phone) => (
+                                    <div key={phone} className="flex items-center gap-2">
+                                      <Phone className="h-3.5 w-3.5" />
+                                      <span>{phone}</span>
                                     </div>
-                                  </div>
+                                  ))}
+                                  {contact.emails.map((email) => (
+                                    <div key={email} className="flex items-center gap-2">
+                                      <Mail className="h-3.5 w-3.5" />
+                                      <span>{email}</span>
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
-                            ))}
+                            </div>
                           </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">Контактов нет.</p>
-                        )}
-                      </CollapsibleContent>
-                    </Collapsible>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Контактов нет.</p>
+                      )}
+                    </div>
                   )}
                 </InfoCard>
 
@@ -2763,19 +3523,26 @@ const InfoCard = ({
   title,
   titleAddon,
   className,
+  bodyClassName,
   children,
 }: {
   title: React.ReactNode;
   titleAddon?: React.ReactNode;
   className?: string;
+  bodyClassName?: string;
   children: React.ReactNode;
 }) => (
-  <div className={cn("glass-card rounded-[20px] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg", className)}>
+  <div
+    className={cn(
+      "rounded-[10px] border border-slate-200/60 bg-white/80 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.05)]",
+      className
+    )}
+  >
     <div className="mb-3 flex items-center justify-between gap-2">
       <div className="text-sm font-semibold">{title}</div>
       {titleAddon}
     </div>
-    <div className="space-y-2 text-sm">{children}</div>
+    <div className={cn("space-y-2 text-sm", bodyClassName)}>{children}</div>
   </div>
 );
 
@@ -2786,99 +3553,27 @@ const InfoRow = ({ label, value }: { label: string; value: string }) => (
   </div>
 );
 
-const ReminderDropdown = ({ onSelect }: { onSelect: (minutes: number) => void }) => (
+const ReminderDropdown = ({
+  onSelect,
+  label = "Напоминание +",
+}: {
+  onSelect: (minutes: number) => void;
+  label?: string;
+}) => (
   <DropdownMenu>
     <DropdownMenuTrigger asChild>
       <Button size="sm" variant="secondary">
-        Напомнить
+        {label}
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent>
-      {[5, 10, 30, 60].map((minutes) => (
+      {[5, 10, 20, 30].map((minutes) => (
         <DropdownMenuCheckboxItem key={minutes} onCheckedChange={() => onSelect(minutes)}>
           Через {minutes} мин.
         </DropdownMenuCheckboxItem>
       ))}
     </DropdownMenuContent>
   </DropdownMenu>
-);
-
-const CommentsTimeline = ({
-  title = "Комментарии",
-  items,
-  value,
-  onChange,
-  onSubmit,
-  onDelete,
-  currentUserName,
-  currentUserId,
-  isDirector,
-  fallbackAuthorName,
-}: {
-  title?: string;
-  items: { id: string; text: string; createdAt: Date; authorId?: string; authorName?: string }[];
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  onDelete: (id: string) => void;
-  currentUserName: string;
-  currentUserId: string;
-  isDirector: boolean;
-  fallbackAuthorName: string;
-}) => (
-  <InfoCard title={title}>
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <textarea
-          className="ios-input min-h-[90px] flex-1"
-          placeholder="Добавить комментарий"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-        />
-        <button onClick={onSubmit} className="ios-button-primary text-xs">
-          Добавить
-        </button>
-      </div>
-      {items.length === 0 && (
-        <p className="text-xs text-muted-foreground">Комментарии отсутствуют.</p>
-      )}
-      <div className="space-y-3 max-h-80 overflow-y-auto no-scrollbar pr-1 scroll-fade-vertical pt-2 pb-2">
-        {items
-          .slice()
-          .sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0))
-          .map((comment) => {
-            const authorName = comment.authorName || fallbackAuthorName || currentUserName || "Менеджер";
-            const canDelete = isDirector || comment.authorId === currentUserId;
-            return (
-              <div key={comment.id} className="flex gap-3 rounded-2xl bg-muted/50 p-3">
-                <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
-                  {getInitials(authorName)}
-                </div>
-                <div className="flex-1 space-y-1">
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span className="font-semibold text-foreground">{authorName}</span>
-                    <div className="flex items-center gap-3">
-                      <span>{formatDateTime(comment.createdAt)}</span>
-                      {canDelete && (
-                        <button
-                          type="button"
-                          onClick={() => onDelete(comment.id)}
-                          className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500/15 text-red-600 hover:bg-red-500/25"
-                          title="Удалить"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-sm text-foreground">{comment.text}</p>
-                </div>
-              </div>
-            );
-          })}
-      </div>
-    </div>
-  </InfoCard>
 );
 
 const NotificationsStack = ({

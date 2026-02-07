@@ -14,6 +14,35 @@ export interface ClientComment {
   id: string;
   text: string;
   createdAt: Date;
+  authorId?: string;
+  authorName?: string;
+  updatedAt?: Date;
+}
+
+export interface ClientCommunication {
+  id: string;
+  scheduledAt: Date;
+  note?: string;
+  status: 'planned' | 'closed';
+  result?: 'success' | 'failed';
+  reason?: string;
+  createdAt: Date;
+  closedAt?: Date | null;
+}
+
+export interface ClientDeal {
+  id: string;
+  createdAt: Date;
+  title: string;
+  unit: string;
+  qty: number;
+  price: number;
+  amount: number;
+  declarationNumber?: string;
+  recipientName?: string;
+  recipientPhone?: string;
+  comment?: string;
+  documents?: string[];
 }
 
 export interface TaskComment {
@@ -64,6 +93,9 @@ export interface Client {
   sourceChannel?: string;
   contacts?: ClientContact[];
   comments?: ClientComment[];
+  communications?: ClientCommunication[];
+  deals?: ClientDeal[];
+  allowManagerDeleteComments?: boolean;
   discounts: number;
   bonusPoints: number;
   managerId?: string;
@@ -304,8 +336,60 @@ const initialClients: Client[] = [
         id: 'comment-1',
         text: 'Discussed renewal terms.',
         createdAt: new Date('2026-01-23T15:40:00'),
+        authorId: '1',
+        authorName: 'dexzr',
       },
     ],
+    notes: 'Обсудили продление договора и сроки поставки.',
+    communications: [
+      {
+        id: 'comm-1',
+        scheduledAt: new Date('2026-01-23T15:30:00'),
+        note: 'Обсудили продление договора.',
+        status: 'closed',
+        result: 'success',
+        createdAt: new Date('2026-01-23T15:00:00'),
+        closedAt: new Date('2026-01-23T15:45:00'),
+      },
+      {
+        id: 'comm-2',
+        scheduledAt: new Date('2026-01-25T10:00:00'),
+        note: 'Уточнить условия поставки.',
+        status: 'planned',
+        createdAt: new Date('2026-01-24T10:10:00'),
+      },
+    ],
+    deals: [
+      {
+        id: 'deal-1',
+        createdAt: new Date('2026-01-21T09:30:00'),
+        title: 'Пакет Банан 4x6 (ПВД)',
+        unit: 'шт.',
+        qty: 1200,
+        price: 0.9,
+        amount: 1080,
+        declarationNumber: '06532/22/01/000122',
+        recipientName: 'Иван Петров',
+        recipientPhone: '+380 67 111 22 33',
+        documents: ['Договор.pdf', 'Счет.pdf'],
+        comment: 'Продление договора.',
+      },
+      {
+        id: 'deal-2',
+        createdAt: new Date('2026-01-22T11:10:00'),
+        title: 'Пакет Банан 4x6 (ПВД) 50 мкм',
+        unit: 'кг',
+        qty: 100,
+        price: 0.32,
+        amount: 32,
+        declarationNumber: '06532/22/01/000123',
+        recipientName: 'Марина Дрозд',
+        recipientPhone: '+380 67 222 44 55',
+        documents: ['ТТН.pdf'],
+        comment: 'Ожидаем подтверждение объема.',
+      },
+    ],
+    allowManagerDeleteComments: true,
     discounts: 15,
     bonusPoints: 2500,
     managerId: '1',
@@ -359,8 +443,25 @@ const initialClients: Client[] = [
         id: 'comment-2',
         text: 'Waiting for updated price list.',
         createdAt: new Date('2026-01-20T09:10:00'),
+        authorId: '2',
+        authorName: 'Jim Halpert',
       },
     ],
+    notes: 'Ожидаем обновленный прайс от поставщика.',
+    communications: [
+      {
+        id: 'comm-2-1',
+        scheduledAt: new Date('2026-01-20T09:00:00'),
+        note: 'Запросить новый прайс.',
+        status: 'closed',
+        result: 'failed',
+        reason: 'expensive',
+        createdAt: new Date('2026-01-20T08:40:00'),
+        closedAt: new Date('2026-01-20T09:20:00'),
+      },
+    ],
+    deals: [],
+    allowManagerDeleteComments: false,
     discounts: 5,
     bonusPoints: 800,
     managerId: '2',
@@ -415,8 +516,25 @@ const initialClients: Client[] = [
         id: 'comment-3',
         text: 'Not interested at the moment.',
         createdAt: new Date('2026-01-18T10:05:00'),
+        authorId: '3',
+        authorName: 'Dwight Schrute',
       },
     ],
+    notes: 'Клиент пока не заинтересован.',
+    communications: [
+      {
+        id: 'comm-3-1',
+        scheduledAt: new Date('2026-01-18T10:00:00'),
+        note: 'Предложить спецусловия.',
+        status: 'closed',
+        result: 'failed',
+        reason: 'not_using',
+        createdAt: new Date('2026-01-18T09:30:00'),
+        closedAt: new Date('2026-01-18T10:10:00'),
+      },
+    ],
+    deals: [],
+    allowManagerDeleteComments: false,
     discounts: 0,
     bonusPoints: 100,
     managerId: '1',
@@ -470,8 +588,24 @@ const initialClients: Client[] = [
         id: 'comment-4',
         text: 'Signed partnership agreement.',
         createdAt: new Date('2026-01-22T12:20:00'),
+        authorId: '2',
+        authorName: 'Jim Halpert',
       },
     ],
+    notes: 'Подписали партнерское соглашение.',
+    communications: [
+      {
+        id: 'comm-4-1',
+        scheduledAt: new Date('2026-01-22T12:00:00'),
+        note: 'Финальное согласование договора.',
+        status: 'closed',
+        result: 'success',
+        createdAt: new Date('2026-01-22T11:20:00'),
+        closedAt: new Date('2026-01-22T12:15:00'),
+      },
+    ],
+    deals: [],
+    allowManagerDeleteComments: true,
     discounts: 10,
     bonusPoints: 1200,
     managerId: '2',
@@ -526,8 +660,22 @@ const initialClients: Client[] = [
         id: 'comment-5',
         text: 'Requested updated contract draft.',
         createdAt: new Date('2026-01-24T16:25:00'),
+        authorId: '1',
+        authorName: 'dexzr',
       },
     ],
+    notes: 'Ожидаем обновленный договор.',
+    communications: [
+      {
+        id: 'comm-5-1',
+        scheduledAt: new Date('2026-01-26T09:00:00'),
+        note: 'Согласовать договор и объем.',
+        status: 'planned',
+        createdAt: new Date('2026-01-24T16:40:00'),
+      },
+    ],
+    deals: [],
+    allowManagerDeleteComments: false,
     discounts: 20,
     bonusPoints: 5000,
     managerId: '1',
@@ -824,7 +972,9 @@ const mergeClientWithSeed = (client: Client) => {
     'email',
     'phone',
     'clientType',
+    'notes',
     'lastCommunicationAt',
+    'reminderAt',
     'responsibleId',
   ] as const).forEach(fillIfEmpty);
 
@@ -836,6 +986,15 @@ const mergeClientWithSeed = (client: Client) => {
   }
   if ((!merged.comments || merged.comments.length === 0) && seed.comments?.length) {
     merged.comments = seed.comments;
+  }
+  if ((!merged.communications || merged.communications.length === 0) && seed.communications?.length) {
+    merged.communications = seed.communications;
+  }
+  if ((!merged.deals || merged.deals.length === 0) && seed.deals?.length) {
+    merged.deals = seed.deals;
+  }
+  if (merged.allowManagerDeleteComments === undefined && seed.allowManagerDeleteComments !== undefined) {
+    merged.allowManagerDeleteComments = seed.allowManagerDeleteComments;
   }
 
   return merged;
@@ -980,6 +1139,10 @@ export const useCRMStore = create<CRMState>()(
             sourceChannel: lead.source,
             contacts: [],
             comments: [],
+            communications: [],
+            deals: [],
+            allowManagerDeleteComments: false,
+            notes: '',
             discounts: 0,
             bonusPoints: 0,
             managerId: lead.managerId,
@@ -1131,7 +1294,7 @@ export const useCRMStore = create<CRMState>()(
     }),
     {
       name: 'crm-storage',
-      version: 6,
+      version: 7,
       migrate: (state) => {
         if (!state || typeof state !== 'object') return state as CRMState;
         const typedState = state as CRMState;
