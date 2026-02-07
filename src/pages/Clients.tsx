@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import {
   ArrowDown,
   ArrowUp,
-  Bell,
+  ChevronDown,
   ChevronRight,
   Clock,
   Copy,
@@ -24,7 +24,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { format, isAfter, isBefore, isSameDay, parseISO } from "date-fns";
+import { addDays, format, isAfter, isBefore, isSameDay, parseISO, setHours, setMinutes } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
 import {
@@ -50,6 +50,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -2256,6 +2260,15 @@ const ClientDetailSheet = ({
     setDraft((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleClientTypeChange = (value?: ClientType) => {
+    setDraft((prev) => ({ ...prev, clientType: value }));
+    if (client.id.startsWith("mock-")) {
+      updateMockClient(client.id, { clientType: value });
+      return;
+    }
+    updateClient(client.id, { clientType: value });
+  };
+
   const updateContact = (index: number, data: Partial<ClientContact>) => {
     setDraft((prev) => {
       const nextContacts = [...(prev.contacts ?? [])];
@@ -2561,15 +2574,32 @@ const ClientDetailSheet = ({
     setClosingReason("");
   };
 
-  const handleSetReminder = (minutes: number) => {
-    const time = new Date(Date.now() + minutes * 60000);
+  const handleSetReminderAt = (time: Date, label?: string) => {
     setReminderAt(time);
     if (client.id.startsWith("mock-")) {
       updateMockClient(client.id, { reminderAt: time });
     } else {
       updateClient(client.id, { reminderAt: time });
     }
-    toast({ title: "Напоминание установлено", description: `Через ${minutes} мин.` });
+    toast({
+      title: "Напоминание установлено",
+      description: label ?? formatDateTime(time),
+    });
+  };
+
+  const handleSetReminder = (minutes: number) => {
+    const time = new Date(Date.now() + minutes * 60000);
+    handleSetReminderAt(time, `Через ${minutes} мин.`);
+  };
+
+  const handleClearReminder = () => {
+    setReminderAt(null);
+    if (client.id.startsWith("mock-")) {
+      updateMockClient(client.id, { reminderAt: null });
+    } else {
+      updateClient(client.id, { reminderAt: null });
+    }
+    toast({ title: "Напоминание очищено" });
   };
 
   const handleCancelEdit = () => {
@@ -2686,12 +2716,36 @@ const ClientDetailSheet = ({
                   <>
                     <DialogTitle className="text-2xl font-semibold">{client.name}</DialogTitle>
                     <p className="text-xs text-muted-foreground">{metaLine || "Карточка клиента"}</p>
-                    <div className="flex flex-wrap gap-2">
-                      {client.clientType && (
-                        <Badge className={cn("text-xs", clientTypeTone[client.clientType])}>
-                          {clientTypeLabel[client.clientType]}
-                        </Badge>
-                      )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full border border-slate-200/70 bg-white/70 px-2.5 py-1 text-xs font-medium text-foreground/80 shadow-sm transition hover:bg-white",
+                              !draft.clientType && "text-muted-foreground"
+                            )}
+                          >
+                            {draft.clientType ? clientTypeLabel[draft.clientType] : "Тип клиента"}
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuRadioGroup
+                            value={draft.clientType ?? "none"}
+                            onValueChange={(value) =>
+                              handleClientTypeChange(value === "none" ? undefined : (value as ClientType))
+                            }
+                          >
+                            <DropdownMenuRadioItem value="none">Без типа</DropdownMenuRadioItem>
+                            {CLIENT_TYPES.map((type) => (
+                              <DropdownMenuRadioItem key={type} value={type}>
+                                {clientTypeLabel[type]}
+                              </DropdownMenuRadioItem>
+                            ))}
+                          </DropdownMenuRadioGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                       {client.activityType && (
                         <Badge variant="secondary" className="text-xs">
                           {client.activityType}
@@ -2702,13 +2756,59 @@ const ClientDetailSheet = ({
                           {client.productCategory}
                         </Badge>
                       )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="secondary" className="h-7 px-2.5 text-xs">
+                            + Напоминание
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem onSelect={() => handleSetReminder(5)}>
+                            через 5 минут
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={() => handleSetReminderAt(new Date(Date.now() + 60 * 60000), "Через час")}
+                          >
+                            через час
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              const tomorrow = addDays(new Date(), 1);
+                              const morning = setHours(setMinutes(tomorrow, 0), 9);
+                              handleSetReminderAt(morning, "Завтра с утра");
+                            }}
+                          >
+                            завтра с утра
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              const nextWeek = addDays(new Date(), 7);
+                              handleSetReminderAt(nextWeek, "Через неделю");
+                            }}
+                          >
+                            через неделю
+                          </DropdownMenuItem>
+                          {reminderAt && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onSelect={handleClearReminder}>
+                                убрать напоминание
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      {reminderAt && (
+                        <span className="text-xs text-muted-foreground">
+                          {formatDateTime(reminderAt)}
+                        </span>
+                      )}
                     </div>
                   </>
                 )}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <ReminderDropdown onSelect={handleSetReminder} label="Напоминание +" />
               {isEditing ? (
                 <>
                   <Button size="sm" onClick={handleSave} disabled={!draft.name?.trim()}>
@@ -3128,23 +3228,6 @@ const ClientDetailSheet = ({
                       </div>
                     </div>
 
-                    {reminderAt && (
-                      <div className="rounded-[10px] bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-2">
-                          <Bell className="h-3.5 w-3.5" />
-                          <span>Напоминание: {formatDateTime(reminderAt)}</span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-2">
-                      {[5, 10, 20, 30].map((minutes) => (
-                        <Button key={minutes} size="sm" variant="secondary" onClick={() => handleSetReminder(minutes)}>
-                          {minutes} мин
-                        </Button>
-                      ))}
-                    </div>
-
                     <div className="mt-1 flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar overscroll-auto space-y-2">
                       {sortedCommunications.length ? (
                         sortedCommunications.map((item) => {
@@ -3551,29 +3634,6 @@ const InfoRow = ({ label, value }: { label: string; value: string }) => (
     <p className="text-xs text-muted-foreground">{label}</p>
     <p className="text-sm text-foreground">{value}</p>
   </div>
-);
-
-const ReminderDropdown = ({
-  onSelect,
-  label = "Напоминание +",
-}: {
-  onSelect: (minutes: number) => void;
-  label?: string;
-}) => (
-  <DropdownMenu>
-    <DropdownMenuTrigger asChild>
-      <Button size="sm" variant="secondary">
-        {label}
-      </Button>
-    </DropdownMenuTrigger>
-    <DropdownMenuContent>
-      {[5, 10, 20, 30].map((minutes) => (
-        <DropdownMenuCheckboxItem key={minutes} onCheckedChange={() => onSelect(minutes)}>
-          Через {minutes} мин.
-        </DropdownMenuCheckboxItem>
-      ))}
-    </DropdownMenuContent>
-  </DropdownMenu>
 );
 
 const NotificationsStack = ({
