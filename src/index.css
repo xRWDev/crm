@@ -1013,6 +1013,7 @@
     @apply text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent;
   }
 
+
   .nav-item-active {
     @apply bg-sidebar-accent text-sidebar-accent-foreground;
   }
@@ -1116,13 +1117,13 @@
     height: 40px;
     width: 40px;
     border-radius: 12px;
-    background: #ffffff;
-    border: 1px solid rgba(226, 232, 240, 0.9);
-    color: #0f172a;
+    background: #1d8bff;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #ffffff;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.18);
     transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.25s ease, color 0.25s ease;
   }
 
@@ -1132,8 +1133,8 @@
   }
 
   .filters-toggle.is-active {
-    background: linear-gradient(135deg, #f8fafc, #ffffff);
-    color: #0f172a;
+    background: #1673e6;
+    color: #ffffff;
     box-shadow: 0 18px 30px rgba(15, 23, 42, 0.2);
   }
 
@@ -1145,11 +1146,10 @@
   .filters-drawer {
     width: 100%;
     max-height: calc(100vh - 220px);
-    background: linear-gradient(180deg, rgba(224, 242, 254, 0.9), rgba(239, 246, 255, 0.92) 45%, rgba(255, 255, 255, 0.96));
-    backdrop-filter: blur(18px);
-    border: 1px solid rgba(191, 219, 254, 0.9);
-    border-radius: 22px;
-    box-shadow: 0 26px 54px rgba(14, 68, 120, 0.16);
+    background: #1d8bff;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 12px;
+    box-shadow: 0 22px 44px rgba(15, 23, 42, 0.28);
     transform: translateX(-12px) scale(0.98);
     opacity: 0;
     overflow: hidden;
@@ -1158,6 +1158,7 @@
     display: flex;
     flex-direction: column;
     pointer-events: none;
+    color: #e2e8f0;
   }
 
   .filters-drawer.is-open {
@@ -1171,28 +1172,105 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 14px;
-    background: rgba(255, 255, 255, 0.8);
-    border-bottom: 1px solid rgba(191, 219, 254, 0.8);
+    background: #1673e6;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    color: #e2e8f0;
   }
 
   .filters-drawer__close {
     height: 28px;
     width: 28px;
-    border-radius: 10px;
-    border: 1px solid rgba(191, 219, 254, 0.9);
-    background: rgba(255, 255, 255, 0.9);
-    color: #64748b;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: transparent;
+    color: #e2e8f0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
   }
 
   .filters-drawer__content {
-    padding: 12px 12px 16px;
+    padding: 0;
     overflow-y: auto;
     flex: 1;
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .filters-drawer .glass-card {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 0 !important;
+    padding: 0 !important;
+  }
+
+  .filters-drawer .filters-row {
+    background: transparent;
+    border-radius: 0;
+    border: none;
+    color: #e5efff;
+    padding: 12px 14px;
+  }
+
+  .filters-drawer .filters-row:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .filters-drawer .filters-row + .filters-row {
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    margin-top: 0;
+  }
+
+  .filters-drawer .filters-row.is-active {
+    background: rgba(255, 255, 255, 0.16);
+    box-shadow: inset 4px 0 0 #ffffff;
+  }
+
+  .filters-drawer .filters-row__dot {
+    display: none;
+  }
+
+  .filters-drawer .filters-row__dot.is-active {
+    display: none;
+  }
+
+  .filters-drawer .filters-row__icon {
+    color: #ffffff;
+  }
+
+  .filters-drawer .filters-row__count {
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #f8fbff;
+  }
+
+  .filters-drawer .collapsible-trigger {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 12px 14px;
+    color: #ffffff;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .filters-drawer .collapsible-trigger svg {
+    color: #ffffff;
+  }
+
+  .filters-drawer .collapsible-trigger:hover {
+    background: rgba(255, 255, 255, 0.06);
+    transform: none;
+  }
+
+  .filters-drawer .collapsible-content {
+    background: transparent;
+    border-radius: 0;
+    padding: 0;
+  }
+
+  .filters-drawer .collapsible-content > * + * {
+    margin-top: 0 !important;
   }
 
   .comment-pill {

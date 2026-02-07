@@ -1021,14 +1021,6 @@ const ClientsPage = () => {
         <aside className={cn("filters-drawer", filtersOpen && "is-open")}>
           <div className="filters-drawer__header">
             <span className="text-sm font-semibold">Фильтры</span>
-            <button
-              type="button"
-              className="filters-drawer__close"
-              onClick={() => setFiltersOpen(false)}
-              aria-label="Закрыть фильтры"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </div>
           <div className="filters-drawer__content custom-scrollbar">
             <div className="glass-card rounded-[22px] p-4">
@@ -1336,21 +1328,21 @@ const FilterRow = ({
   <button
     onClick={onClick}
     className={cn(
-      "w-full flex items-center justify-between rounded-xl px-3 py-2 text-sm transition-all",
-      active ? "bg-white/70 shadow-sm ring-1 ring-sky-200/60" : "hover:bg-white/40"
+      "filters-row w-full flex items-center justify-between rounded-xl px-3 py-2 text-sm transition-all",
+      active && "is-active"
     )}
   >
     <div className="flex items-center gap-2">
       <span
         className={cn(
-          "h-1.5 w-1.5 rounded-full",
-          active ? "bg-sky-500" : "bg-muted-foreground/40"
+          "filters-row__dot h-1.5 w-1.5 rounded-full",
+          active && "is-active"
         )}
       />
-      <Icon className="h-4 w-4 text-primary" />
+      <Icon className="filters-row__icon h-4 w-4" />
       <span>{label}</span>
     </div>
-    <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/60 px-2 text-[11px] font-semibold">
+    <span className="filters-row__count inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-2 text-[11px] font-semibold">
       {count}
     </span>
   </button>
