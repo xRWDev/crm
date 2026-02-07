@@ -1,5 +1,5 @@
 ﻿
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowDown,
@@ -903,20 +903,10 @@ const ClientsPage = () => {
       ? totalSize - virtualRows[virtualRows.length - 1].end
       : 0;
 
+
   const selectedClient = useMemo(
     () => allClients.find((client) => client.id === selectedClientId) || null,
     [allClients, selectedClientId]
-  );
-
-  const handleTablePointerMove = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!expandedContactId) return;
-      const target = event.target as HTMLElement | null;
-      if (!target) return;
-      if (target.closest(".contacts-cell")) return;
-      setExpandedContactId(null);
-    },
-    [expandedContactId]
   );
 
   const startSuppressOpen = () => {
@@ -1149,7 +1139,6 @@ const ClientsPage = () => {
             <div
               ref={tableContainerRef}
               className="h-[649px] w-full min-w-0 overflow-x-auto overflow-y-auto custom-scrollbar"
-              onPointerMove={handleTablePointerMove}
               onScroll={(event) => {
                 const target = event.currentTarget;
                 if (target.scrollTop + target.clientHeight >= target.scrollHeight - 120) {
@@ -1363,147 +1352,126 @@ const FilterRow = ({
 const clampValue = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
-const ContactsCell = ({
-  contacts,
-  isOpen,
-  onOpen,
-  onClose,
-}: {
+  const ContactsCell = ({
+    contacts,
+    isOpen,
+    onOpen,
+    onClose,
+  }: {
   contacts: ClientContact[];
   isOpen: boolean;
   onOpen: () => void;
   onClose: () => void;
-}) => {
-  const previewContact = contacts[0];
-  const previewPhone = previewContact?.phones?.[0] ?? "—";
-  const extraContacts = contacts.slice(1);
-  const cellRef = useRef<HTMLDivElement | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const hoverTimerRef = useRef<number | null>(null);
+  }) => {
+    const previewContact = contacts[0];
+    const previewPhone = previewContact?.phones?.[0] ?? "—";
+    const extraContacts = contacts.slice(1);
+    const hasExtraContacts = extraContacts.length > 0;
+    const cellRef = useRef<HTMLDivElement | null>(null);
+    const triggerRef = useRef<HTMLButtonElement | null>(null);
+    const popoverRef = useRef<HTMLDivElement | null>(null);
+    const listRef = useRef<HTMLDivElement | null>(null);
+    const [popoverSize, setPopoverSize] = useState({ w: 280, h: 180 });
 
-  if (!contacts.length) {
-    return <span className="text-sm text-foreground/60">—</span>;
-  }
-
-  const handleCopy = (event: React.MouseEvent | React.KeyboardEvent, phone: string) => {
-    event.stopPropagation();
-    if (!phone || phone === "—") return;
-    navigator.clipboard?.writeText(phone);
-    toast({ title: "Телефон скопирован", description: phone });
-  };
-
-  const openIfAvailable = () => {
-    if (!extraContacts.length) return;
-    onOpen();
-  };
-
-  const clearHoverTimer = () => {
-    if (hoverTimerRef.current) {
-      window.clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = null;
+    if (!contacts.length) {
+      return <span className="text-sm text-foreground/60">—</span>;
     }
-  };
 
-  const scheduleClose = () => {
-    clearHoverTimer();
-    hoverTimerRef.current = window.setTimeout(() => {
-      onClose();
-    }, 140);
-  };
-
-  useEffect(() => () => clearHoverTimer(), []);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const listEl = listRef.current;
-    if (!listEl) return;
-
-    let raf = 0;
-    const update = () => {
-      raf = 0;
-      const rect = listEl.getBoundingClientRect();
-      if (!rect.height) return;
-      const firstEl = listEl.firstElementChild as HTMLElement | null;
-      if (firstEl) {
-        const itemRect = firstEl.getBoundingClientRect();
-        const pad = Math.max((rect.height - itemRect.height) / 2, 0);
-        listEl.style.setProperty("--wheel-padding", `${pad}px`);
-      }
-      const centerY = rect.top + rect.height / 2;
-      Array.from(listEl.children).forEach((child) => {
-        const el = child as HTMLElement;
-        const elRect = el.getBoundingClientRect();
-        const elCenter = elRect.top + elRect.height / 2;
-        const distance = Math.abs(elCenter - centerY);
-        const max = rect.height / 2;
-        const ratio = Math.min(distance / max, 1);
-        const scale = 1 - 0.08 * ratio;
-        const opacity = 1 - 0.28 * ratio;
-        el.style.setProperty("--wheel-scale", scale.toFixed(3));
-        el.style.setProperty("--wheel-opacity", opacity.toFixed(3));
-        el.classList.toggle("is-center", distance < elRect.height * 0.35);
-      });
+    const handleCopy = (event: React.MouseEvent | React.KeyboardEvent, phone: string) => {
+      event.stopPropagation();
+      if (!phone || phone === "—") return;
+      navigator.clipboard?.writeText(phone);
+      toast({ title: "Телефон скопирован", description: phone });
     };
 
-    const alignFirstToCenter = () => {
-      const first = listEl.firstElementChild as HTMLElement | null;
-      if (!first) return;
-      const listRect = listEl.getBoundingClientRect();
-      const firstRect = first.getBoundingClientRect();
-      const offset = first.offsetTop + firstRect.height / 2 - listRect.height / 2;
-      listEl.scrollTop = Math.max(0, offset);
-    };
-
-    const onScroll = () => {
-      if (raf) return;
-      raf = window.requestAnimationFrame(update);
-    };
-
-    window.requestAnimationFrame(() => {
-      alignFirstToCenter();
-      update();
-    });
-    listEl.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", update);
-    return () => {
-      if (raf) window.cancelAnimationFrame(raf);
-      listEl.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", update);
-    };
-  }, [isOpen, contacts.length]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (!cellRef.current || !target) return;
-      if (target.closest("[data-contacts-keep-open]")) return;
-      if (!cellRef.current.contains(target)) {
+    const toggleOpen = () => {
+      if (!contacts.length) return;
+      if (isOpen) {
         onClose();
+      } else {
+        onOpen();
       }
     };
-    window.addEventListener("pointerdown", handlePointerDown);
-    return () => window.removeEventListener("pointerdown", handlePointerDown);
-  }, [isOpen, onClose]);
 
-  return (
-    <div
-      ref={cellRef}
-      className="contacts-cell"
-      onPointerEnter={() => {
-        clearHoverTimer();
-        openIfAvailable();
-      }}
-      onPointerLeave={() => scheduleClose()}
-    >
-      {!isOpen && (
+    useLayoutEffect(() => {
+      if (!isOpen || !popoverRef.current) return;
+      const rect = popoverRef.current.getBoundingClientRect();
+      if (rect.width && rect.height) {
+        setPopoverSize({ w: rect.width, h: rect.height });
+      }
+    }, [isOpen, contacts.length]);
+
+    useLayoutEffect(() => {
+      if (!isOpen || !listRef.current) return;
+      const listEl = listRef.current;
+      const firstItem = listEl.querySelector<HTMLElement>(".contacts-popover__item");
+      if (!firstItem) return;
+      const itemHeight = firstItem.getBoundingClientRect().height;
+      if (!itemHeight) return;
+      const gap = 8;
+      const maxHeight = itemHeight * 3 + gap * 2;
+      listEl.style.setProperty("--contacts-list-max-height", `${Math.round(maxHeight)}px`);
+    }, [isOpen, contacts.length]);
+
+    useEffect(() => {
+      if (!isOpen) return;
+      const handlePointerDown = (event: PointerEvent) => {
+        const target = event.target as HTMLElement | null;
+        if (!cellRef.current || !target) return;
+        if (target.closest("[data-contacts-keep-open]")) return;
+        if (cellRef.current.contains(target)) return;
+        if (popoverRef.current?.contains(target)) return;
+        onClose();
+      };
+      window.addEventListener("pointerdown", handlePointerDown);
+      return () => window.removeEventListener("pointerdown", handlePointerDown);
+    }, [isOpen, onClose]);
+
+    useEffect(() => {
+      if (!isOpen) return;
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === "Escape") onClose();
+      };
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [isOpen, onClose]);
+
+
+    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 0;
+    const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 0;
+    const padding = 12;
+    const width = popoverSize.w || 280;
+    const height = popoverSize.h || 180;
+    const triggerRect = triggerRef.current?.getBoundingClientRect();
+    let left = padding;
+    let top = padding;
+    let side: "top" | "bottom" = "bottom";
+    if (triggerRect) {
+      left = triggerRect.left + triggerRect.width / 2 - width / 2;
+      left = clampValue(left, padding, Math.max(padding, viewportWidth - width - padding));
+      top = triggerRect.bottom + 8;
+      if (top + height > viewportHeight - padding) {
+        top = Math.max(padding, triggerRect.top - height - 8);
+        side = "top";
+      }
+    }
+    const popoverStyle = {
+      left,
+      top,
+    } as React.CSSProperties;
+
+    return (
+      <div
+        ref={cellRef}
+        className="contacts-cell"
+      >
         <button
+          ref={triggerRef}
           type="button"
           className={cn("contacts-preview", isOpen && "is-open")}
           onClick={(event) => {
             event.stopPropagation();
-            if (!extraContacts.length) return;
-            onOpen();
+            toggleOpen();
           }}
           aria-expanded={isOpen}
         >
@@ -1533,65 +1501,65 @@ const ContactsCell = ({
               <span className="contacts-preview__phone">—</span>
             )}
           </div>
-          <span className="contacts-preview__count">{contacts.length}</span>
+          {hasExtraContacts && <span className="contacts-preview__count">{contacts.length}</span>}
         </button>
-      )}
-
-      <AnimatePresence initial={false}>
-        {extraContacts.length > 0 && isOpen && (
-          <div className="contacts-expand" style={{ overflow: "hidden" }}>
-            <div ref={listRef} className="contacts-expand__list custom-scrollbar">
-              {contacts.map((contact, index) => {
-                const isPreview = index === 0;
-                const phones = contact.phones ?? [];
-                const primaryPhone = phones[0] ?? "—";
-                return (
-                  <div
-                    key={contact.id}
-                    className={cn("contacts-expand__item", isPreview && "is-preview")}
-                    role={isPreview ? "button" : undefined}
-                    tabIndex={isPreview ? 0 : undefined}
+        {isOpen && typeof document !== "undefined"
+          ? createPortal(
+              <div
+                ref={popoverRef}
+                className="contacts-popover"
+                data-side={side}
+                style={popoverStyle}
+              >
+                <div className="contacts-popover__header">
+                  <span>{contacts.length === 1 ? "Контакт" : "Контакты"}</span>
+                  <button
+                    type="button"
+                    className="contacts-popover__close"
                     onClick={(event) => {
-                      if (!isPreview) return;
                       event.stopPropagation();
                       onClose();
                     }}
-                    onKeyDown={(event) => {
-                      if (!isPreview) return;
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        onClose();
-                      }
-                    }}
+                    aria-label="Закрыть"
                   >
-                    <div className="contacts-expand__item-row">
-                      <span className="contacts-expand__item-name">{contact.name || "—"}</span>
-                      {contact.position && (
-                        <span className="contacts-expand__item-role">{contact.position}</span>
-                      )}
-                    </div>
-                    {primaryPhone !== "—" ? (
-                      <button
-                        type="button"
-                        className="contacts-copy"
-                        onClick={(event) => handleCopy(event, primaryPhone)}
-                      >
-                        <span>{primaryPhone}</span>
-                        <Copy className="h-3 w-3 opacity-60" />
-                      </button>
-                    ) : (
-                      <span className="contacts-expand__item-phone">—</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-};
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div ref={listRef} className="contacts-popover__list">
+                  {contacts.map((contact) => {
+                    const phones = contact.phones ?? [];
+                    const primaryPhone = phones[0] ?? "—";
+                    return (
+                      <div key={contact.id} className="contacts-popover__item">
+                        <div className="contacts-popover__item-row">
+                          <span className="contacts-popover__item-name">{contact.name || "—"}</span>
+                          {contact.position && (
+                            <span className="contacts-popover__item-role">{contact.position}</span>
+                          )}
+                        </div>
+                        {primaryPhone !== "—" ? (
+                          <button
+                            type="button"
+                            className="contacts-copy"
+                            onClick={(event) => handleCopy(event, primaryPhone)}
+                          >
+                            <span>{primaryPhone}</span>
+                            <Copy className="h-3 w-3 opacity-60" />
+                          </button>
+                        ) : (
+                          <span className="contacts-popover__item-phone">—</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>,
+              document.body
+            )
+          : null}
+      </div>
+    );
+  };
 
 const CommentHoverTooltip = ({
   text,
