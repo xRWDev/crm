@@ -1370,7 +1370,7 @@
   .contacts-expand__item {
     border-radius: 14px;
     border: 1px solid rgba(226, 232, 240, 0.9);
-    background: #ffffff;
+    background: #f1f5f9;
     padding: 8px 10px;
     font-size: 12px;
     text-align: left;
@@ -1385,7 +1385,7 @@
   }
 
   .contacts-expand__item.is-center {
-    background: #f8fafc;
+    background: #ffffff;
     border-color: rgba(203, 213, 225, 0.9);
     box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
     transform: scale(1);
