@@ -637,6 +637,16 @@ const ClientsPage = () => {
 
       if (!searchQuery.trim()) return true;
       const search = searchQuery.toLowerCase();
+      const contactsText = (client.contacts ?? [])
+        .flatMap((contact) => [
+          contact.name,
+          contact.position,
+          ...(contact.phones ?? []),
+          ...(contact.emails ?? []),
+        ])
+        .filter(Boolean)
+        .join(" ");
+
       const haystack = [
         client.name,
         client.company,
@@ -648,7 +658,9 @@ const ClientsPage = () => {
         client.activityType,
         client.productCategory,
         client.lastComment,
+        client.communicationNote,
         client.responsibleName,
+        contactsText,
       ]
         .filter(Boolean)
         .join(" ")
@@ -1055,7 +1067,7 @@ const ClientsPage = () => {
     const activeKeys = new Set<string>();
     const now = Date.now();
 
-    storeClients.forEach((client) => {
+    allClients.forEach((client) => {
       if (!client.reminderAt) return;
       const reminderTime = toDate(client.reminderAt)?.getTime();
       if (!reminderTime) return;
@@ -1065,22 +1077,27 @@ const ClientsPage = () => {
       if (timers.has(key)) return;
 
       const timeoutId = window.setTimeout(() => {
+        const reminderText = (client.communicationNote || "").trim() || "Напоминание";
         setReminders((prev) => [
           ...prev,
           {
             id: key,
             title: client.name,
-            text: client.notes || "Напоминание",
+            text: reminderText,
             time: formatDateTime(client.reminderAt),
           },
         ]);
         playReminderSound();
         toast({
           title: "Напоминание",
-          description: `${client.name} · ${client.notes || "Напоминание"}`,
+          description: `${client.name} · ${reminderText}`,
         });
         timers.delete(key);
-        updateClient(client.id, { reminderAt: null });
+        if (client.id.startsWith("mock-")) {
+          updateMockClient(client.id, { reminderAt: null });
+        } else {
+          updateClient(client.id, { reminderAt: null });
+        }
       }, reminderTime - now);
 
       timers.set(key, timeoutId);
@@ -1091,7 +1108,7 @@ const ClientsPage = () => {
       window.clearTimeout(timeoutId);
       timers.delete(key);
     });
-  }, [storeClients, updateClient]);
+  }, [allClients, updateClient, updateMockClient]);
 
   useEffect(() => {
     return () => {
@@ -2224,6 +2241,9 @@ const ClientDetailSheet = ({
   const [dealFormOpen, setDealFormOpen] = useState(false);
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
   const [dealForm, setDealForm] = useState<DealFormState>(() => buildEmptyDealForm());
+  const dealFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [commHistoryOpen, setCommHistoryOpen] = useState(true);
+  const [contactsOpen, setContactsOpen] = useState(true);
 
   useEffect(() => {
     if (!open || !client) return;
@@ -2248,6 +2268,8 @@ const ClientDetailSheet = ({
     setDealForm(buildEmptyDealForm());
     setDealFormOpen(false);
     setEditingDealId(null);
+    setCommHistoryOpen(true);
+    setContactsOpen(true);
   }, [client, open, initialTab]);
 
   const metaLine = [draft.company, draft.city, draft.region].filter(Boolean).join(" • ");
@@ -2457,6 +2479,30 @@ const ClientDetailSheet = ({
     setDealForm(buildEmptyDealForm());
     setDealFormOpen(false);
     setEditingDealId(null);
+  };
+
+  const appendDealDocuments = (files: File[]) => {
+    if (!files.length) return;
+    const names = files.map((file) => file.name).filter(Boolean);
+    if (!names.length) return;
+    setDealForm((prev) => {
+      const existing = prev.documents
+        .split(",")
+        .map((doc) => doc.trim())
+        .filter(Boolean);
+      const next = Array.from(new Set([...existing, ...names]));
+      return { ...prev, documents: next.join(", ") };
+    });
+  };
+
+  const handleDealFilesChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    appendDealDocuments(Array.from(event.target.files ?? []));
+    event.target.value = "";
+  };
+
+  const handleDealFilesDrop = (event: React.DragEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    appendDealDocuments(Array.from(event.dataTransfer.files ?? []));
   };
 
   const computeCommunicationMeta = (items: NonNullable<ClientRecord["communications"]>) => {
@@ -2965,14 +3011,36 @@ const ClientDetailSheet = ({
                               setDealForm((prev) => ({ ...prev, recipientPhone: event.target.value }))
                             }
                           />
-                          <Input
-                            className="h-9"
-                            placeholder="Документы (через запятую)"
-                            value={dealForm.documents}
-                            onChange={(event) =>
-                              setDealForm((prev) => ({ ...prev, documents: event.target.value }))
-                            }
-                          />
+                          <div className="space-y-2">
+                            <Input
+                              className="h-9"
+                              placeholder="Документы (через запятую)"
+                              value={dealForm.documents}
+                              onChange={(event) =>
+                                setDealForm((prev) => ({ ...prev, documents: event.target.value }))
+                              }
+                              onDragOver={(event) => event.preventDefault()}
+                              onDrop={handleDealFilesDrop}
+                            />
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <input
+                                ref={dealFileInputRef}
+                                type="file"
+                                multiple
+                                className="hidden"
+                                onChange={handleDealFilesChange}
+                              />
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => dealFileInputRef.current?.click()}
+                              >
+                                Загрузить
+                              </Button>
+                            </div>
+                          </div>
                           <Input
                             className="h-9"
                             placeholder="Комментарий"
@@ -3228,95 +3296,113 @@ const ClientDetailSheet = ({
                       </div>
                     </div>
 
-                    <div className="mt-1 flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar overscroll-auto space-y-2">
-                      {sortedCommunications.length ? (
-                        sortedCommunications.map((item) => {
-                          const isPlanned = item.status === "planned";
-                          const isSuccess = item.result === "success";
-                          const badgeClass = isPlanned
-                            ? "bg-amber-100 text-amber-700"
-                            : isSuccess
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-rose-100 text-rose-700";
-                          const badgeLabel = isPlanned
-                            ? "В работе"
-                            : isSuccess
-                            ? "Завершено удачно"
-                            : "Завершено неудачно";
+                    <Collapsible open={commHistoryOpen} onOpenChange={setCommHistoryOpen}>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>История</span>
+                        <CollapsibleTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/60 text-muted-foreground transition hover:bg-slate-50/80"
+                            aria-label="Свернуть историю"
+                          >
+                            <ChevronDown
+                              className={cn("h-4 w-4 transition-transform", !commHistoryOpen && "-rotate-90")}
+                            />
+                          </button>
+                        </CollapsibleTrigger>
+                      </div>
+                      <CollapsibleContent>
+                        <div className="mt-2 max-h-64 overflow-y-auto pr-1 custom-scrollbar overscroll-auto space-y-2">
+                          {sortedCommunications.length ? (
+                            sortedCommunications.map((item) => {
+                              const isPlanned = item.status === "planned";
+                              const isSuccess = item.result === "success";
+                              const badgeClass = isPlanned
+                                ? "bg-amber-100 text-amber-700"
+                                : isSuccess
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-rose-100 text-rose-700";
+                              const badgeLabel = isPlanned
+                                ? "В работе"
+                                : isSuccess
+                                ? "Завершено удачно"
+                                : "Завершено неудачно";
 
-                          return (
-                            <div key={item.id} className="rounded-[10px] bg-slate-50 px-3 py-2 text-xs">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-semibold text-foreground">
-                                  {formatDateTime(item.scheduledAt)}
-                                </span>
-                                <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", badgeClass)}>
-                                  {badgeLabel}
-                                </span>
-                              </div>
-                              {item.note && <p className="mt-1 text-xs text-muted-foreground">{item.note}</p>}
-                              {item.status === "closed" && item.result === "failed" && item.reason && (
-                                <p className="mt-1 text-[11px] text-rose-500">
-                                  Причина: {communicationReasonLabel[item.reason] ?? item.reason}
-                                </p>
-                              )}
-                              {isPlanned && (
-                                <div className="mt-2">
-                                  <Button size="sm" variant="outline" onClick={() => handleStartCloseCommunication(item.id)}>
-                                    Закрыть
-                                  </Button>
-                                </div>
-                              )}
-                              {closingCommId === item.id && (
-                                <div className="mt-2 rounded-[10px] border border-slate-200/60 bg-white/70 p-2">
-                                  <div className="flex flex-wrap gap-2">
-                                    <Button
-                                      size="sm"
-                                      variant={closingResult === "success" ? "default" : "secondary"}
-                                      onClick={() => setClosingResult("success")}
-                                    >
-                                      Завершено удачно
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant={closingResult === "failed" ? "default" : "secondary"}
-                                      onClick={() => setClosingResult("failed")}
-                                    >
-                                      Завершено неудачно
-                                    </Button>
+                              return (
+                                <div key={item.id} className="rounded-[10px] bg-slate-50 px-3 py-2 text-xs">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-semibold text-foreground">
+                                      {formatDateTime(item.scheduledAt)}
+                                    </span>
+                                    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", badgeClass)}>
+                                      {badgeLabel}
+                                    </span>
                                   </div>
-                                  {closingResult === "failed" && (
-                                    <div className="mt-2 space-y-1">
-                                      {COMMUNICATION_FAIL_REASONS.map((reason) => (
-                                        <label key={reason.value} className="flex items-center gap-2 text-xs">
-                                          <input
-                                            type="radio"
-                                            name={`reason-${item.id}`}
-                                            checked={closingReason === reason.value}
-                                            onChange={() => setClosingReason(reason.value)}
-                                          />
-                                          {reason.label}
-                                        </label>
-                                      ))}
+                                  {item.note && <p className="mt-1 text-xs text-muted-foreground">{item.note}</p>}
+                                  {item.status === "closed" && item.result === "failed" && item.reason && (
+                                    <p className="mt-1 text-[11px] text-rose-500">
+                                      Причина: {communicationReasonLabel[item.reason] ?? item.reason}
+                                    </p>
+                                  )}
+                                  {isPlanned && (
+                                    <div className="mt-2">
+                                      <Button size="sm" variant="outline" onClick={() => handleStartCloseCommunication(item.id)}>
+                                        Закрыть
+                                      </Button>
                                     </div>
                                   )}
-                                  <div className="mt-2 flex gap-2">
-                                    <Button size="sm" onClick={handleConfirmCloseCommunication}>
-                                      Сохранить
-                                    </Button>
-                                    <Button size="sm" variant="ghost" onClick={handleCancelCloseCommunication}>
-                                      Отмена
-                                    </Button>
-                                  </div>
+                                  {closingCommId === item.id && (
+                                    <div className="mt-2 rounded-[10px] border border-slate-200/60 bg-white/70 p-2">
+                                      <div className="flex flex-wrap gap-2">
+                                        <Button
+                                          size="sm"
+                                          variant={closingResult === "success" ? "default" : "secondary"}
+                                          onClick={() => setClosingResult("success")}
+                                        >
+                                          Завершено удачно
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant={closingResult === "failed" ? "default" : "secondary"}
+                                          onClick={() => setClosingResult("failed")}
+                                        >
+                                          Завершено неудачно
+                                        </Button>
+                                      </div>
+                                      {closingResult === "failed" && (
+                                        <div className="mt-2 space-y-1">
+                                          {COMMUNICATION_FAIL_REASONS.map((reason) => (
+                                            <label key={reason.value} className="flex items-center gap-2 text-xs">
+                                              <input
+                                                type="radio"
+                                                name={`reason-${item.id}`}
+                                                checked={closingReason === reason.value}
+                                                onChange={() => setClosingReason(reason.value)}
+                                              />
+                                              {reason.label}
+                                            </label>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <div className="mt-2 flex gap-2">
+                                        <Button size="sm" onClick={handleConfirmCloseCommunication}>
+                                          Сохранить
+                                        </Button>
+                                        <Button size="sm" variant="ghost" onClick={handleCancelCloseCommunication}>
+                                          Отмена
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <p className="text-sm text-muted-foreground">Коммуникаций нет.</p>
-                      )}
-                    </div>
+                              );
+                            })
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Коммуникаций нет.</p>
+                          )}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   </div>
                 </InfoCard>
                 <InfoCard title="Ответственный" className="animate-fade-up">
@@ -3366,116 +3452,136 @@ const ClientDetailSheet = ({
                   )}
                 </InfoCard>
 
-                <InfoCard title={`Контактные лица (${contactList.length})`} className="animate-fade-up">
-                  {isEditing ? (
-                    <div className="space-y-3">
-                      {contactList.length ? (
-                        contactList.map((contact, index) => (
-                          <div
-                            key={contact.id}
-                            className="rounded-2xl border border-slate-200/60 bg-white/70 p-3 space-y-2"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <Input
-                                className="h-9"
-                                value={contact.name}
-                                placeholder="Имя и фамилия"
-                                onChange={(event) =>
-                                  updateContact(index, { name: event.target.value })
-                                }
-                              />
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-9 w-9"
-                                onClick={() => handleRemoveContact(index)}
-                                aria-label="Удалить контакт"
+                <Collapsible open={contactsOpen} onOpenChange={setContactsOpen}>
+                  <InfoCard
+                    title={`Контактные лица (${contactList.length})`}
+                    className="animate-fade-up"
+                    titleAddon={
+                      <CollapsibleTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/60 text-muted-foreground transition hover:bg-slate-50/80"
+                          aria-label="Свернуть контакты"
+                        >
+                          <ChevronDown
+                            className={cn("h-4 w-4 transition-transform", !contactsOpen && "-rotate-90")}
+                          />
+                        </button>
+                      </CollapsibleTrigger>
+                    }
+                  >
+                    <CollapsibleContent>
+                      {isEditing ? (
+                        <div className="space-y-3">
+                          {contactList.length ? (
+                            contactList.map((contact, index) => (
+                              <div
+                                key={contact.id}
+                                className="rounded-2xl border border-slate-200/60 bg-white/70 p-3 space-y-2"
                               >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            <Input
-                              className="h-9"
-                              value={contact.position ?? ""}
-                              placeholder="Должность"
-                              onChange={(event) =>
-                                updateContact(index, { position: event.target.value })
-                              }
-                            />
-                            <Input
-                              className="h-9"
-                              value={(contact.phones ?? []).join(", ")}
-                              placeholder="Телефоны через запятую"
-                              onChange={(event) =>
-                                updateContact(index, {
-                                  phones: event.target.value
-                                    .split(",")
-                                    .map((item) => item.trim())
-                                    .filter(Boolean),
-                                })
-                              }
-                            />
-                            <Input
-                              className="h-9"
-                              value={(contact.emails ?? []).join(", ")}
-                              placeholder="Email через запятую"
-                              onChange={(event) =>
-                                updateContact(index, {
-                                  emails: event.target.value
-                                    .split(",")
-                                    .map((item) => item.trim())
-                                    .filter(Boolean),
-                                })
-                              }
-                            />
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-muted-foreground">Контактов нет.</p>
-                      )}
-                      <Button size="sm" variant="secondary" onClick={handleAddContact}>
-                        Добавить контакт
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {contactList.length ? (
-                        contactList.map((contact) => (
-                          <div key={contact.id} className="rounded-[10px] bg-slate-50 px-3 py-2">
-                            <div className="flex items-start gap-3">
-                              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-primary/10 text-xs font-semibold text-primary">
-                                {getInitials(contact.name)}
-                              </div>
-                              <div className="flex-1 space-y-1">
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="text-sm font-semibold text-foreground">{contact.name}</p>
-                                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                <div className="flex items-start justify-between gap-2">
+                                  <Input
+                                    className="h-9"
+                                    value={contact.name}
+                                    placeholder="Имя и фамилия"
+                                    onChange={(event) =>
+                                      updateContact(index, { name: event.target.value })
+                                    }
+                                  />
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-9 w-9"
+                                    onClick={() => handleRemoveContact(index)}
+                                    aria-label="Удалить контакт"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
                                 </div>
-                                <p className="text-xs text-muted-foreground">{contact.position || "—"}</p>
-                                <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                                  {contact.phones.map((phone) => (
-                                    <div key={phone} className="flex items-center gap-2">
-                                      <Phone className="h-3.5 w-3.5" />
-                                      <span>{phone}</span>
+                                <Input
+                                  className="h-9"
+                                  value={contact.position ?? ""}
+                                  placeholder="Должность"
+                                  onChange={(event) =>
+                                    updateContact(index, { position: event.target.value })
+                                  }
+                                />
+                                <Input
+                                  className="h-9"
+                                  value={(contact.phones ?? []).join(", ")}
+                                  placeholder="Телефоны через запятую"
+                                  onChange={(event) =>
+                                    updateContact(index, {
+                                      phones: event.target.value
+                                        .split(",")
+                                        .map((item) => item.trim())
+                                        .filter(Boolean),
+                                    })
+                                  }
+                                />
+                                <Input
+                                  className="h-9"
+                                  value={(contact.emails ?? []).join(", ")}
+                                  placeholder="Email через запятую"
+                                  onChange={(event) =>
+                                    updateContact(index, {
+                                      emails: event.target.value
+                                        .split(",")
+                                        .map((item) => item.trim())
+                                        .filter(Boolean),
+                                    })
+                                  }
+                                />
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Контактов нет.</p>
+                          )}
+                          <Button size="sm" variant="secondary" onClick={handleAddContact}>
+                            Добавить контакт
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {contactList.length ? (
+                            contactList.map((contact) => (
+                              <div key={contact.id} className="rounded-[10px] bg-slate-50 px-3 py-2">
+                                <div className="flex items-start gap-3">
+                                  <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-primary/10 text-xs font-semibold text-primary">
+                                    {getInitials(contact.name)}
+                                  </div>
+                                  <div className="flex-1 space-y-1">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-sm font-semibold text-foreground">{contact.name}</p>
+                                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
                                     </div>
-                                  ))}
-                                  {contact.emails.map((email) => (
-                                    <div key={email} className="flex items-center gap-2">
-                                      <Mail className="h-3.5 w-3.5" />
-                                      <span>{email}</span>
+                                    <p className="text-xs text-muted-foreground">{contact.position || "—"}</p>
+                                    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                                      {contact.phones.map((phone) => (
+                                        <div key={phone} className="flex items-center gap-2">
+                                          <Phone className="h-3.5 w-3.5" />
+                                          <span>{phone}</span>
+                                        </div>
+                                      ))}
+                                      {contact.emails.map((email) => (
+                                        <div key={email} className="flex items-center gap-2">
+                                          <Mail className="h-3.5 w-3.5" />
+                                          <span>{email}</span>
+                                        </div>
+                                      ))}
                                     </div>
-                                  ))}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-muted-foreground">Контактов нет.</p>
+                            ))
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Контактов нет.</p>
+                          )}
+                        </div>
                       )}
-                    </div>
-                  )}
-                </InfoCard>
+                    </CollapsibleContent>
+                  </InfoCard>
+                </Collapsible>
 
                 <InfoCard title="Информация о компании">
                   {isEditing ? (
@@ -3578,6 +3684,23 @@ const ClientDetailSheet = ({
                           </SelectContent>
                         </Select>
                       </div>
+                      {isDirector && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Удаление комментариев менеджером</p>
+                          <Select
+                            value={allowManagerDelete ? "allowed" : "blocked"}
+                            onValueChange={(value) => handleToggleAllowManagerDelete(value === "allowed")}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder="Удаление комментариев менеджером" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="blocked">Запрещено</SelectItem>
+                              <SelectItem value="allowed">Разрешено</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <>
