@@ -1213,7 +1213,7 @@
     gap: 10px;
     width: 100%;
     min-width: 220px;
-    max-width: 280px;
+    max-width: 260px;
     border-radius: 14px;
     border: 1px solid rgba(226, 232, 240, 0.9);
     background: #ffffff;
@@ -1320,9 +1320,17 @@
 
   .contacts-expand {
     width: 100%;
-    max-width: 280px;
+    max-width: 260px;
     overflow: hidden;
     will-change: height, opacity, transform;
+    opacity: 1;
+    transform: scale(1);
+    transition: transform 140ms ease, opacity 140ms ease;
+  }
+
+  .contacts-cell:hover .contacts-expand {
+    opacity: 1;
+    transform: scale(1.01);
   }
 
   .contacts-expand__list {
@@ -1330,9 +1338,9 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-height: 180px;
+    max-height: 170px;
     overflow-y: auto;
-    padding: var(--wheel-padding, 36px) 2px;
+    padding: var(--wheel-padding, 18px) 2px;
     scroll-snap-type: y mandatory;
     scroll-padding-block: 36px;
     scroll-behavior: smooth;
@@ -1368,17 +1376,20 @@
     text-align: left;
     scroll-snap-align: center;
     scroll-snap-stop: always;
-    transform: scale(var(--wheel-scale, 0.85));
+    transform: scale(var(--wheel-scale, 0.92));
     opacity: var(--wheel-opacity, 0.6);
     transition: transform 220ms ease, opacity 220ms ease, border-color 240ms ease,
-      background 240ms ease;
+      background 240ms ease, box-shadow 240ms ease;
     will-change: transform, opacity;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
   }
 
   .contacts-expand__item.is-center {
     background: #f8fafc;
     border-color: rgba(203, 213, 225, 0.9);
     box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
+    transform: scale(1);
+    opacity: 1;
   }
 
   .contacts-expand__item-row {

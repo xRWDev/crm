@@ -1379,6 +1379,7 @@ const ContactsCell = ({
   const extraContacts = contacts.slice(1);
   const cellRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const hoverTimerRef = useRef<number | null>(null);
 
   if (!contacts.length) {
     return <span className="text-sm text-foreground/60">—</span>;
@@ -1390,6 +1391,27 @@ const ContactsCell = ({
     navigator.clipboard?.writeText(phone);
     toast({ title: "Телефон скопирован", description: phone });
   };
+
+  const openIfAvailable = () => {
+    if (!extraContacts.length) return;
+    onOpen();
+  };
+
+  const clearHoverTimer = () => {
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
+
+  const scheduleClose = () => {
+    clearHoverTimer();
+    hoverTimerRef.current = window.setTimeout(() => {
+      onClose();
+    }, 140);
+  };
+
+  useEffect(() => () => clearHoverTimer(), []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1415,8 +1437,8 @@ const ContactsCell = ({
         const distance = Math.abs(elCenter - centerY);
         const max = rect.height / 2;
         const ratio = Math.min(distance / max, 1);
-        const scale = 1 - 0.15 * ratio;
-        const opacity = 1 - 0.45 * ratio;
+        const scale = 1 - 0.08 * ratio;
+        const opacity = 1 - 0.28 * ratio;
         el.style.setProperty("--wheel-scale", scale.toFixed(3));
         el.style.setProperty("--wheel-opacity", opacity.toFixed(3));
         el.classList.toggle("is-center", distance < elRect.height * 0.35);
@@ -1465,7 +1487,15 @@ const ContactsCell = ({
   }, [isOpen, onClose]);
 
   return (
-    <div ref={cellRef} className="contacts-cell">
+    <div
+      ref={cellRef}
+      className="contacts-cell"
+      onPointerEnter={() => {
+        clearHoverTimer();
+        openIfAvailable();
+      }}
+      onPointerLeave={() => scheduleClose()}
+    >
       {!isOpen && (
         <button
           type="button"
