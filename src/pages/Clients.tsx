@@ -167,7 +167,6 @@ const columnsOrderDefault = [
   "starred",
   "name",
   "contacts",
-  "phone",
   "city",
   "email",
   "website",
@@ -185,7 +184,6 @@ const columnLabels: Record<ColumnKey, string> = {
   starred: "Избр.",
   name: "Название",
   contacts: "Контакты",
-  phone: "Телефон",
   city: "Город",
   email: "Почта",
   website: "Сайт",
@@ -525,7 +523,6 @@ const ClientsPage = () => {
       starred: true,
       name: true,
       contacts: true,
-      phone: true,
       city: true,
       email: true,
       website: true,
@@ -747,14 +744,6 @@ const ClientsPage = () => {
             />
           );
         },
-      },
-        {
-          id: "phone",
-          accessorKey: "phone",
-          header: () => <span className="table-head-text">Телефон</span>,
-        cell: ({ getValue }) => (
-          <div className="text-sm text-foreground whitespace-nowrap">{getValue<string>() ?? "—"}</div>
-        ),
       },
         {
           id: "city",
