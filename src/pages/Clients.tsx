@@ -149,6 +149,20 @@ const clientTypeTone: Record<ClientType, string> = {
   partner: "bg-sky-100/70 text-sky-700",
 };
 
+const communicationStatusLabel: Record<CommunicationStatus, string> = {
+  none: "Без статуса",
+  refused: "Отказ",
+  in_progress: "В работе",
+  success: "Успешно",
+};
+
+const communicationStatusTone: Record<CommunicationStatus, string> = {
+  none: "bg-slate-100 text-slate-500",
+  refused: "bg-rose-100/70 text-rose-700",
+  in_progress: "bg-amber-100/70 text-amber-700",
+  success: "bg-emerald-100/70 text-emerald-700",
+};
+
 const columnsOrderDefault = [
   "starred",
   "name",
@@ -175,7 +189,7 @@ const columnLabels: Record<ColumnKey, string> = {
   city: "Город",
   email: "Почта",
   website: "Сайт",
-  clientType: "Тип клиента",
+  clientType: "Статус",
   lastCommunicationAt: "Последняя коммуникация",
   lastComment: "Комментарий",
   activityType: "Вид деятельности",
@@ -659,10 +673,14 @@ const ClientsPage = () => {
   );
   const columns = useMemo<ColumnDef<ClientRecord>[]>(() => {
     const cols: ColumnDef<ClientRecord>[] = [
-      {
-        id: "starred",
-        header: () => <span className="text-xs uppercase tracking-[0.18em]">Избр.</span>,
-        cell: ({ row }) => {
+        {
+          id: "starred",
+          header: () => (
+            <span className="table-head-icon" aria-label="Избранные">
+              <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
+            </span>
+          ),
+          cell: ({ row }) => {
           const client = row.original;
           return (
             <button
@@ -688,43 +706,36 @@ const ClientsPage = () => {
         },
         size: 60,
       },
-      {
-        id: "name",
-        accessorKey: "name",
-        header: () => <span className="text-xs uppercase tracking-[0.18em]">Название</span>,
-        cell: ({ row }) => {
-          const client = row.original;
-          return (
-            <button
-              type="button"
-              className="min-w-[180px] text-center"
-              onClick={(event) => {
-                event.stopPropagation();
-                const selection = window.getSelection?.();
-                if (selection && selection.toString()) return;
-                handleOpenClient(client);
-              }}
-            >
-              <div className="flex flex-col items-center gap-1">
-                <div className="text-sm font-semibold text-foreground text-center">{client.name}</div>
-                {client.clientType && (
-                  <span
-                    className={cn(
-                      "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold",
-                      clientTypeTone[client.clientType]
-                    )}
-                  >
-                    {clientTypeLabel[client.clientType]}
-                  </span>
-                )}
-              </div>
-            </button>
-          );
-        },
+        {
+          id: "name",
+          accessorKey: "name",
+          header: () => <span className="table-head-text">ФИО / Название</span>,
+          cell: ({ row }) => {
+            const client = row.original;
+            return (
+              <button
+                type="button"
+                className="client-name-button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  const selection = window.getSelection?.();
+                  if (selection && selection.toString()) return;
+                  handleOpenClient(client);
+                }}
+              >
+                <div className="client-name-block">
+                  <div className="client-name-title">{client.name}</div>
+                  <div className="client-name-subtitle">
+                    {client.clientType ? clientTypeLabel[client.clientType] : "—"}
+                  </div>
+                </div>
+              </button>
+            );
+          },
       },
-      {
-        id: "contacts",
-        header: () => <span className="text-xs uppercase tracking-[0.18em]">Контакты</span>,
+        {
+          id: "contacts",
+          header: () => <span className="table-head-text">Телефоны и сотрудники</span>,
         cell: ({ row }) => {
           const clientId = row.original.id;
           return (
@@ -737,26 +748,26 @@ const ClientsPage = () => {
           );
         },
       },
-      {
-        id: "phone",
-        accessorKey: "phone",
-        header: () => <span className="text-xs uppercase tracking-[0.18em]">Телефон</span>,
+        {
+          id: "phone",
+          accessorKey: "phone",
+          header: () => <span className="table-head-text">Телефон</span>,
         cell: ({ getValue }) => (
           <div className="text-sm text-foreground whitespace-nowrap">{getValue<string>() ?? "—"}</div>
         ),
       },
-      {
-        id: "city",
-        accessorKey: "city",
-        header: () => <span className="text-xs uppercase tracking-[0.18em]">Город</span>,
+        {
+          id: "city",
+          accessorKey: "city",
+          header: () => <span className="table-head-text">Город</span>,
         cell: ({ getValue }) => (
           <div className="text-sm text-foreground">{getValue<string>() ?? "—"}</div>
         ),
       },
-      {
-        id: "email",
-        accessorKey: "email",
-        header: () => <span className="text-xs uppercase tracking-[0.18em]">Почта</span>,
+        {
+          id: "email",
+          accessorKey: "email",
+          header: () => <span className="table-head-text">Почта</span>,
         cell: ({ row }) => (
           <button
             aria-label="Скопировать email"
@@ -774,10 +785,10 @@ const ClientsPage = () => {
         ),
         size: 70,
       },
-      {
-        id: "website",
-        accessorKey: "website",
-        header: () => <span className="text-xs uppercase tracking-[0.18em]">Сайт</span>,
+        {
+          id: "website",
+          accessorKey: "website",
+          header: () => <span className="table-head-text">Сайт</span>,
         cell: ({ row }) => (
           <button
             aria-label="Открыть сайт"
@@ -794,35 +805,38 @@ const ClientsPage = () => {
         ),
         size: 70,
       },
-      {
-        id: "clientType",
-        accessorKey: "clientType",
-        header: () => <span className="text-xs uppercase tracking-[0.18em]">Тип клиента</span>,
-        cell: ({ getValue }) => {
-          const value = getValue<ClientType | undefined>();
-          return value ? (
-            <span className={cn("inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold", clientTypeTone[value])}>
-              {clientTypeLabel[value]}
-            </span>
-          ) : (
-            "—"
-          );
+        {
+          id: "clientType",
+          accessorKey: "clientType",
+          header: () => <span className="table-head-text">Статус</span>,
+          cell: ({ row }) => {
+            const status = row.original.status ?? "none";
+            return (
+              <span
+                className={cn(
+                  "inline-flex min-w-max items-center whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-semibold leading-none",
+                  communicationStatusTone[status]
+                )}
+              >
+                {communicationStatusLabel[status]}
+              </span>
+            );
+          },
         },
-      },
-      {
-        id: "lastCommunicationAt",
-        accessorKey: "lastCommunicationAt",
-        header: () => <span className="text-xs uppercase tracking-[0.18em]">Последняя коммуникация</span>,
+        {
+          id: "lastCommunicationAt",
+          accessorKey: "lastCommunicationAt",
+          header: () => <span className="table-head-text">Последняя коммуникация</span>,
         cell: ({ getValue }) => (
           <span className="text-sm text-foreground/80 whitespace-nowrap">
             {formatDate(getValue<Date | string | null>())}
           </span>
         ),
       },
-      {
-        id: "lastComment",
-        accessorKey: "lastComment",
-        header: () => <span className="text-xs uppercase tracking-[0.18em]">Комментарий</span>,
+        {
+          id: "lastComment",
+          accessorKey: "lastComment",
+          header: () => <span className="table-head-text">Последний комментарий</span>,
         cell: ({ row, getValue }) => {
           const value = (getValue<string>() ?? "").trim();
           const limit = 12;
@@ -843,26 +857,26 @@ const ClientsPage = () => {
           );
         },
       },
-      {
-        id: "activityType",
-        accessorKey: "activityType",
-        header: () => <span className="text-xs uppercase tracking-[0.18em]">Вид деятельности</span>,
+        {
+          id: "activityType",
+          accessorKey: "activityType",
+          header: () => <span className="table-head-text">Вид деятельности</span>,
         cell: ({ getValue }) => (
           <span className="text-sm text-foreground/80">{getValue<string>() ?? "—"}</span>
         ),
       },
-      {
-        id: "productCategory",
-        accessorKey: "productCategory",
-        header: () => <span className="text-xs uppercase tracking-[0.18em]">Продукция</span>,
+        {
+          id: "productCategory",
+          accessorKey: "productCategory",
+          header: () => <span className="table-head-text">Продукция</span>,
         cell: ({ getValue }) => (
           <span className="text-sm text-foreground/80">{getValue<string>() ?? "—"}</span>
         ),
       },
-      {
-        id: "responsibleName",
-        accessorKey: "responsibleName",
-        header: () => <span className="text-xs uppercase tracking-[0.18em]">Ответственный</span>,
+        {
+          id: "responsibleName",
+          accessorKey: "responsibleName",
+          header: () => <span className="table-head-text">Ответственные</span>,
         cell: ({ getValue }) => (
           <span className="text-sm text-foreground/80">{getValue<string>() ?? "—"}</span>
         ),
@@ -1146,14 +1160,18 @@ const ClientsPage = () => {
                 }
               }}
             >
-              <table className="service-table min-w-full">
+              <table className="service-table clients-table min-w-full">
                 <thead className="sticky top-0 z-10">
                   {table.getHeaderGroups().map((headerGroup) => (
-                    <tr key={headerGroup.id} className="bg-white/70 backdrop-blur">
+                    <tr key={headerGroup.id} className="table-head-row">
                       {headerGroup.headers.map((header) => (
                         <th
                           key={header.id}
-                          className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
+                          className={cn(
+                            "table-head-cell",
+                            header.id !== "starred" && "table-head-cell--left",
+                            header.id === "contacts" && "table-head-cell--tight"
+                          )}
                         >
                           {header.isPlaceholder
                             ? null
@@ -1189,7 +1207,11 @@ const ClientsPage = () => {
                         {row.getVisibleCells().map((cell) => (
                           <td
                             key={cell.id}
-                            className="px-4 py-3 align-middle text-foreground/90"
+                            className={cn(
+                              "px-4 py-3 align-middle text-foreground/90",
+                              cell.column.id !== "starred" && "table-cell-left",
+                              cell.column.id === "contacts" && "table-cell--tight"
+                            )}
                           >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </td>
@@ -1513,17 +1535,6 @@ const clampValue = (value: number, min: number, max: number) =>
               >
                 <div className="contacts-popover__header">
                   <span>{contacts.length === 1 ? "Контакт" : "Контакты"}</span>
-                  <button
-                    type="button"
-                    className="contacts-popover__close"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onClose();
-                    }}
-                    aria-label="Закрыть"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
                 </div>
                 <div ref={listRef} className="contacts-popover__list">
                   {contacts.map((contact) => {

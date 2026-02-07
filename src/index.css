@@ -870,6 +870,48 @@
     text-align: center;
   }
 
+  .clients-table .table-head-row {
+    background: #f8fafc;
+    box-shadow: inset 0 -1px 0 rgba(226, 232, 240, 0.9);
+  }
+
+  .clients-table .table-head-cell {
+    padding: 12px 16px;
+    border-bottom: 0;
+    text-align: center;
+  }
+
+  .clients-table .table-head-cell--left {
+    text-align: left;
+  }
+
+  .clients-table .table-head-cell--tight {
+    padding-left: 8px;
+  }
+
+  .clients-table .table-head-text {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: #94a3b8;
+    text-transform: none;
+  }
+
+  .clients-table .table-head-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .clients-table .table-cell-left {
+    text-align: left;
+  }
+
+  .clients-table .table-cell--tight {
+    padding-left: 8px;
+  }
+
   .service-table tbody tr {
     @apply transition-colors duration-150;
     transition: background-color 180ms ease;
@@ -907,6 +949,30 @@
 
   .service-table .cell-muted {
     @apply text-sm text-muted-foreground;
+  }
+
+  .client-name-button {
+    min-width: 180px;
+    text-align: left;
+  }
+
+  .client-name-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .client-name-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+    letter-spacing: 0.02em;
+  }
+
+  .client-name-subtitle {
+    font-size: 11px;
+    color: #94a3b8;
   }
 
   .action-btn {
@@ -1206,23 +1272,23 @@
     box-shadow: -6px -6px 12px rgba(15, 23, 42, 0.08);
   }
 
-    .contacts-preview {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+  .contacts-preview {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
       gap: 10px;
     width: 100%;
     min-width: 220px;
     max-width: 260px;
     border-radius: 14px;
     border: 1px solid rgba(226, 232, 240, 0.9);
-      background: #ffffff;
-      padding: 8px 10px;
-      box-shadow: none;
-      text-align: left;
-      margin-left: auto;
-      margin-right: auto;
-    }
+    background: #ffffff;
+    padding: 8px 10px;
+    box-shadow: none;
+    text-align: left;
+    margin-left: 0;
+    margin-right: 0;
+  }
 
   .contacts-preview:hover {
     background: #f8fafc;
@@ -1307,8 +1373,9 @@
   .contacts-cell {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
+    width: 100%;
   }
 
     .contacts-expand {
