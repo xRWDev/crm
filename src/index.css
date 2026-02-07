@@ -724,11 +724,11 @@
 
   .clients-fab {
     position: absolute;
-    right: 17px;
-    bottom: 0px;
+    right: 20px;
+    bottom: 16px;
     z-index: 30;
-    height: 3.5rem;
-    width: 3.5rem;
+    height: 60px;
+    width: 60px;
     border-radius: 18px;
     background: hsl(var(--primary));
     color: hsl(var(--primary-foreground));
@@ -1002,7 +1002,7 @@
   }
 
   .actions-safe {
-    margin-right: 72px;
+    margin-right: 96px;
   }
 
 

@@ -1234,15 +1234,11 @@ const ClientsPage = () => {
 
           </div>
 
-          <div
-            className="sticky bottom-2 z-10"
-            style={{ width: filtersOpen ? "1313px" : "100%" }}
-          >
+          <div className="sticky bottom-2 z-10 w-full">
             <div className="flex items-center gap-3">
               <div
                 className={cn(
-                  "glass-card rounded-[22px] px-4 flex items-center gap-3 h-[42px]",
-                  filtersOpen ? "w-[1232px]" : "flex-1 min-w-0"
+                  "glass-card rounded-[22px] px-4 flex items-center gap-3 h-[42px] flex-1 min-w-0 max-w-full"
                 )}
                 data-contacts-keep-open
               >
@@ -1261,38 +1257,38 @@ const ClientsPage = () => {
                   filtersOpen && "compact-actions"
                 )}
               >
-              <Button variant="secondary" size="sm" onClick={handleExportSelected} className="action-btn">
-                <FileSpreadsheet className="h-4 w-4" />
-                <span className="action-label">Экспорт</span>
-              </Button>
-              <ColumnManager
-                columnOrder={columnOrder}
-                columnVisibility={columnVisibility}
-                  onMove={(key, direction) => {
-                    const index = columnOrder.indexOf(key);
-                    if (index < 0) return;
-                    const nextIndex = direction === "up" ? index - 1 : index + 1;
-                    if (nextIndex < 0 || nextIndex >= columnOrder.length) return;
-                    const next = [...columnOrder];
-                    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-                    setColumnOrder(next);
-                  }}
-                  onToggle={(key) =>
-                    setColumnVisibility((prev) => ({
-                      ...prev,
-                      [key]: !prev[key],
-                    }))
-                  }
-                />
+                <Button variant="secondary" size="sm" onClick={handleExportSelected} className="action-btn">
+                  <FileSpreadsheet className="h-4 w-4" />
+                  <span className="action-label">Экспорт</span>
+                </Button>
+                <ColumnManager
+                  columnOrder={columnOrder}
+                  columnVisibility={columnVisibility}
+                    onMove={(key, direction) => {
+                      const index = columnOrder.indexOf(key);
+                      if (index < 0) return;
+                      const nextIndex = direction === "up" ? index - 1 : index + 1;
+                      if (nextIndex < 0 || nextIndex >= columnOrder.length) return;
+                      const next = [...columnOrder];
+                      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+                      setColumnOrder(next);
+                    }}
+                    onToggle={(key) =>
+                      setColumnVisibility((prev) => ({
+                        ...prev,
+                        [key]: !prev[key],
+                      }))
+                    }
+                  />
+                </div>
               </div>
             </div>
-          </div>
 
-          <button className="clients-fab" onClick={() => setIsAddOpen(true)} aria-label="Добавить клиента">
-            <Plus className="h-5 w-5" />
-          </button>
+            <button className="clients-fab" onClick={() => setIsAddOpen(true)} aria-label="Добавить клиента">
+              <Plus className="h-6 w-6" />
+            </button>
 
-        </section>
+          </section>
       </div>
 
       <NotificationsStack
