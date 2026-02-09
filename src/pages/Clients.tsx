@@ -1292,7 +1292,7 @@ const ClientsPage = () => {
           <div className="glass-card rounded-[22px] p-4 overflow-hidden relative animate-fade-up">
             <div
               ref={tableContainerRef}
-              className="h-[649px] w-full min-w-0 overflow-x-auto overflow-y-auto custom-scrollbar"
+              className="h-[649px] w-full min-w-0 overflow-x-auto overflow-y-auto floating-scrollbar"
               onScroll={(event) => {
                 const target = event.currentTarget;
                 if (target.scrollTop + target.clientHeight >= target.scrollHeight - 120) {
