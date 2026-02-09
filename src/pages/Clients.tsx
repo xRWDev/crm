@@ -2873,7 +2873,7 @@ const ClientDetailSheet = ({
       }}
     >
       <DialogContent
-        className="client-details-modal modal-surface flex max-h-[92vh] w-[min(96vw,1280px)] max-w-6xl flex-col overflow-hidden rounded-[20px] border border-slate-200/60 bg-slate-50 p-6 !translate-x-[-50%] !translate-y-[-50%] data-[state=open]:animate-none data-[state=closed]:animate-none"
+        className="client-details-modal modal-surface flex max-h-[92vh] w-[min(98vw,1800px)] max-w-none flex-col overflow-hidden rounded-[20px] border border-slate-200/60 bg-slate-50 p-6 !translate-x-[-50%] !translate-y-[-50%] data-[state=open]:animate-none data-[state=closed]:animate-none"
         onPointerDownCapture={onPointerDownCapture}
         onPointerDownOutside={onPointerDownCapture}
       >
