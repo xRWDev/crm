@@ -1,0 +1,101 @@
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+
+export type DirectoryKey =
+  | "activity"
+  | "region"
+  | "city"
+  | "postal"
+  | "product"
+  | "clientType"
+  | "tag"
+  | "refusal"
+  | "orderStatus"
+  | "sourceChannel";
+
+export type Directories = Record<DirectoryKey, string[]>;
+
+type DirectoryState = {
+  directories: Directories;
+  addDirectoryItem: (key: DirectoryKey, value: string) => void;
+  removeDirectoryItem: (key: DirectoryKey, value: string) => void;
+  setDirectoryItems: (key: DirectoryKey, items: string[]) => void;
+};
+
+const DEFAULT_DIRECTORIES: Directories = {
+  activity: ["Аптеки", "Банки", "Прачечные", "Розница"],
+  region: ["Киевская", "Львовская", "Одесская"],
+  city: ["Киев", "Львов", "Одесса"],
+  postal: ["Новая Почта", "Укрпочта", "DHL"],
+  product: ["Канцелярия", "Одежда", "Игрушки"],
+  clientType: ["Клиент", "Поставщик", "Конкурент", "Партнер"],
+  tag: ["VIP", "Важно", "Просрочка"],
+  refusal: ["Есть свой поставщик", "Не используют", "Закрылись", "Дорого"],
+  orderStatus: ["Новая", "В работе", "Завершена", "Отменена"],
+  sourceChannel: ["Сайт", "Рекомендация", "Выставка", "Холодный звонок", "Партнер"],
+};
+
+const normalizeItem = (value: string) => value.trim().replace(/\s+/g, " ");
+
+export const useDirectoryStore = create<DirectoryState>()(
+  persist(
+    (set) => ({
+      directories: DEFAULT_DIRECTORIES,
+      addDirectoryItem: (key, value) => {
+        const normalized = normalizeItem(value);
+        if (!normalized) return;
+        set((state) => {
+          const prev = state.directories[key] ?? [];
+          if (prev.some((item) => item.toLowerCase() === normalized.toLowerCase())) return state;
+          return {
+            directories: {
+              ...state.directories,
+              [key]: [...prev, normalized],
+            },
+          };
+        });
+      },
+      removeDirectoryItem: (key, value) => {
+        const normalized = normalizeItem(value);
+        if (!normalized) return;
+        set((state) => ({
+          directories: {
+            ...state.directories,
+            [key]: (state.directories[key] ?? []).filter((item) => item !== normalized),
+          },
+        }));
+      },
+      setDirectoryItems: (key, items) => {
+        set((state) => ({
+          directories: {
+            ...state.directories,
+            [key]: Array.from(
+              new Set((items ?? []).map((item) => normalizeItem(item)).filter(Boolean))
+            ),
+          },
+        }));
+      },
+    }),
+    {
+      name: "crm-directories",
+      version: 1,
+      migrate: (state) => {
+        if (!state || typeof state !== "object") return state as DirectoryState;
+        const typedState = state as DirectoryState;
+        if (!typedState.directories || typeof typedState.directories !== "object") return typedState;
+
+        // Ensure newly added directory keys always exist.
+        const merged: Directories = { ...DEFAULT_DIRECTORIES, ...typedState.directories } as Directories;
+        (Object.keys(DEFAULT_DIRECTORIES) as DirectoryKey[]).forEach((key) => {
+          merged[key] = Array.isArray(merged[key]) ? merged[key].map(normalizeItem).filter(Boolean) : [];
+        });
+
+        return {
+          ...typedState,
+          directories: merged,
+        };
+      },
+    }
+  )
+);
+

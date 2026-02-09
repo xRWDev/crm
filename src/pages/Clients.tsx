@@ -4,27 +4,33 @@ import { createPortal } from "react-dom";
 import {
   ArrowDown,
   ArrowUp,
+  Calendar,
   ChevronDown,
   ChevronRight,
   Clock,
   Copy,
   FileSpreadsheet,
+  FileText,
   Filter,
   Globe,
   Mail,
   MessageCircle,
+  MoreVertical,
+  Paperclip,
   Pencil,
-  Phone,
   PhoneCall,
   Plus,
   Search,
+  Smile,
   SlidersHorizontal,
   Star,
   Trash2,
+  User,
   Users,
   X,
 } from "lucide-react";
-import { addDays, format, isAfter, isBefore, isSameDay, parseISO, setHours, setMinutes } from "date-fns";
+import { addDays, addHours, format, isAfter, isBefore, isSameDay, parseISO, setHours, setMinutes } from "date-fns";
+import { ru } from "date-fns/locale";
 import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
 import {
@@ -78,6 +84,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
 import { useCRMStore, Client, ClientContact, Employee } from "@/store/crmStore";
 import { useAuthStore } from "@/store/authStore";
+import { useDirectoryStore } from "@/store/directoryStore";
 
 const CLIENT_TYPES = ["client", "supplier", "competitor", "partner"] as const;
 type ClientType = (typeof CLIENT_TYPES)[number];
@@ -322,6 +329,25 @@ const formatDateTime = (value?: Date | string | null) => {
   return date ? format(date, "dd.MM.yyyy, HH:mm") : "—";
 };
 
+const capitalizeFirstLetter = (value: string) =>
+  value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : value;
+
+const formatDayLabel = (value?: Date | string | null) => {
+  const date = toDate(value);
+  return date ? capitalizeFirstLetter(format(date, "EEEE, d MMMM", { locale: ru })) : "—";
+};
+
+const formatClockTime = (value?: Date | string | null) => {
+  const date = toDate(value);
+  return date ? format(date, "H:mm") : "—";
+};
+
+const formatShortClockTime = (value?: Date | string | null) => {
+  const date = toDate(value);
+  if (!date) return "—";
+  return date.getMinutes() === 0 ? format(date, "H") : format(date, "H:mm");
+};
+
 const formatAmount = (value?: number | null) => {
   if (value === null || value === undefined) return "—";
   return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(value);
@@ -522,6 +548,10 @@ const ClientsPage = () => {
   const { clients: storeClients, employees, addClient, updateClient } = useCRMStore();
   const { role } = useAuthStore();
   const isDirector = role === "director";
+  const directoryActivities = useDirectoryStore((state) => state.directories.activity);
+  const directoryProducts = useDirectoryStore((state) => state.directories.product);
+  const directoryRegions = useDirectoryStore((state) => state.directories.region);
+  const directoryCities = useDirectoryStore((state) => state.directories.city);
 
   const employeesList = useMemo(
     () => employees.map((emp) => ({ id: emp.id, name: emp.name })),
@@ -709,23 +739,41 @@ const ClientsPage = () => {
   }, [allClients, employeesList, currentUserId]);
 
   const activityOptions = useMemo(
-    () => Array.from(new Set(allClients.map((client) => client.activityType).filter(Boolean))) as string[],
-    [allClients]
+    () =>
+      Array.from(
+        new Set([
+          ...directoryActivities,
+          ...allClients.map((client) => client.activityType).filter(Boolean),
+        ])
+      ) as string[],
+    [allClients, directoryActivities]
   );
 
   const productOptions = useMemo(
-    () => Array.from(new Set(allClients.map((client) => client.productCategory).filter(Boolean))) as string[],
-    [allClients]
+    () =>
+      Array.from(
+        new Set([
+          ...directoryProducts,
+          ...allClients.map((client) => client.productCategory).filter(Boolean),
+        ])
+      ) as string[],
+    [allClients, directoryProducts]
   );
 
   const regionOptions = useMemo(
-    () => Array.from(new Set(allClients.map((client) => client.region).filter(Boolean))) as string[],
-    [allClients]
+    () =>
+      Array.from(
+        new Set([...directoryRegions, ...allClients.map((client) => client.region).filter(Boolean)])
+      ) as string[],
+    [allClients, directoryRegions]
   );
 
   const cityOptions = useMemo(
-    () => Array.from(new Set(allClients.map((client) => client.city).filter(Boolean))) as string[],
-    [allClients]
+    () =>
+      Array.from(
+        new Set([...directoryCities, ...allClients.map((client) => client.city).filter(Boolean)])
+      ) as string[],
+    [allClients, directoryCities]
   );
   const columns = useMemo<ColumnDef<ClientRecord>[]>(() => {
     const cols: ColumnDef<ClientRecord>[] = [
@@ -1907,6 +1955,18 @@ const AddClientDialog = ({
   const safeProducts = productOptions.length ? productOptions : MOCK_PRODUCTS;
   const safeRegions = regionOptions.length ? regionOptions : MOCK_REGIONS;
   const safeCities = cityOptions.length ? cityOptions : MOCK_CITIES;
+  const directorySourceChannels = useDirectoryStore((state) => state.directories.sourceChannel);
+  const sourceChannelOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...directorySourceChannels,
+          ...SOURCE_CHANNELS,
+          ...(form.sourceChannel ? [form.sourceChannel] : []),
+        ])
+      ),
+    [directorySourceChannels, form.sourceChannel]
+  );
 
   useEffect(() => {
     if (!open) {
@@ -2009,7 +2069,7 @@ const AddClientDialog = ({
               <SelectValue placeholder="Канал привлечения" />
             </SelectTrigger>
             <SelectContent>
-              {SOURCE_CHANNELS.map((option) => (
+              {sourceChannelOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
                 </SelectItem>
@@ -2243,7 +2303,8 @@ const ClientDetailSheet = ({
   const [dealForm, setDealForm] = useState<DealFormState>(() => buildEmptyDealForm());
   const dealFileInputRef = useRef<HTMLInputElement | null>(null);
   const [commHistoryOpen, setCommHistoryOpen] = useState(true);
-  const [contactsOpen, setContactsOpen] = useState(true);
+  const [commFormOpen, setCommFormOpen] = useState(false);
+  const [activeContactId, setActiveContactId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !client) return;
@@ -2269,7 +2330,8 @@ const ClientDetailSheet = ({
     setDealFormOpen(false);
     setEditingDealId(null);
     setCommHistoryOpen(true);
-    setContactsOpen(true);
+    setCommFormOpen(false);
+    setActiveContactId((client.contacts ?? [])[0]?.id ?? null);
   }, [client, open, initialTab]);
 
   const metaLine = [draft.company, draft.city, draft.region].filter(Boolean).join(" • ");
@@ -2277,6 +2339,30 @@ const ClientDetailSheet = ({
   const responsible = employees.find(
     (emp) => emp.id === (draft.responsibleId || client.responsibleId || client.ownerId)
   );
+  const directorySourceChannels = useDirectoryStore((state) => state.directories.sourceChannel);
+  const sourceChannelOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...directorySourceChannels,
+          ...SOURCE_CHANNELS,
+          ...(draft.sourceChannel ? [draft.sourceChannel] : []),
+        ])
+      ),
+    [directorySourceChannels, draft.sourceChannel]
+  );
+
+  useEffect(() => {
+    if (!contactList.length) {
+      setActiveContactId(null);
+      return;
+    }
+    // Keep the view collapsible: if user closed the active contact (activeContactId === null),
+    // do not auto-open the first contact again.
+    if (activeContactId === null) return;
+    if (contactList.some((contact) => contact.id === activeContactId)) return;
+    setActiveContactId(contactList[0]?.id ?? null);
+  }, [activeContactId, contactList]);
 
   const updateDraft = <K extends keyof ClientRecord>(key: K, value: ClientRecord[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -2698,10 +2784,83 @@ const ClientDetailSheet = ({
       (toDate(b.scheduledAt)?.getTime() ?? 0) - (toDate(a.scheduledAt)?.getTime() ?? 0)
   );
 
-  const sortedComments = [...comments].sort(
-    (a, b) =>
-      (toDate(b.createdAt)?.getTime() ?? 0) - (toDate(a.createdAt)?.getTime() ?? 0)
+  const nextPlannedCommunication = useMemo(() => {
+    const planned = communications.filter((item) => item.status === "planned");
+    if (!planned.length) return null;
+    return [...planned].sort(
+      (a, b) =>
+        (toDate(a.scheduledAt)?.getTime() ?? 0) - (toDate(b.scheduledAt)?.getTime() ?? 0)
+    )[0]!;
+  }, [communications]);
+
+  const meetingNoteText = (nextPlannedCommunication?.note || "").trim();
+  const meetingTodoItems = useMemo(() => {
+    if (!meetingNoteText) return [];
+    return meetingNoteText
+      .split(/\n+/)
+      .flatMap((line) => line.split(/[.!?]+/))
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 3);
+  }, [meetingNoteText]);
+
+  const communicationTodoItems = useMemo(() => {
+    const text = (draft.communicationNote || "").trim();
+    if (!text) return [];
+    if (meetingNoteText && text === meetingNoteText) return [];
+    return text
+      .split(/\n+/)
+      .flatMap((line) => line.split(/[.!?]+/))
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 3);
+  }, [draft.communicationNote, meetingNoteText]);
+
+  const nextCommunicationDate = toDate(
+    nextPlannedCommunication?.scheduledAt ?? draft.nextCommunicationAt ?? null
   );
+  const nextCommunicationRelativeLabel = nextCommunicationDate
+    ? isSameDay(nextCommunicationDate, new Date())
+      ? "сегодня"
+      : isSameDay(nextCommunicationDate, addDays(new Date(), 1))
+      ? "завтра"
+      : format(nextCommunicationDate, "dd.MM.yyyy")
+    : "";
+  const nextCommunicationPill = nextCommunicationDate
+    ? `Встреча ${nextCommunicationRelativeLabel} с ${formatShortClockTime(nextCommunicationDate)} до ${formatShortClockTime(addHours(nextCommunicationDate, 2))}`
+    : "Коммуникация не запланирована";
+
+  const chatTimeline = useMemo(() => {
+    // Oldest -> newest (chat-like order)
+    const sorted = [...comments].sort(
+      (a, b) => (toDate(a.createdAt)?.getTime() ?? 0) - (toDate(b.createdAt)?.getTime() ?? 0)
+    );
+    const result: Array<
+      | { type: "day"; id: string; label: string }
+      | { type: "msg"; id: string; msg: (typeof sorted)[number] }
+    > = [];
+    let lastLabel = "";
+
+    sorted.forEach((msg) => {
+      const label = formatDayLabel(msg.createdAt);
+      if (label && label !== lastLabel) {
+        result.push({ type: "day", id: `day-${label}`, label });
+        lastLabel = label;
+      }
+      result.push({ type: "msg", id: msg.id, msg });
+    });
+
+    return result;
+  }, [comments]);
+
+  const docsFlat = useMemo(() => dealList.flatMap((deal) => deal.documents ?? []), [dealList]);
+  const documentSummary = useMemo(() => {
+    const contracts = docsFlat.filter((name) => /договор/i.test(name)).length;
+    const invoices = docsFlat.filter((name) => /ттн|наклад/i.test(name)).length;
+    const quotes = docsFlat.filter((name) => /кп|коммер/i.test(name)).length;
+    const total = docsFlat.length;
+    return { contracts, invoices, quotes, total };
+  }, [docsFlat]);
 
   if (!client) return null;
 
@@ -2797,23 +2956,29 @@ const ClientDetailSheet = ({
                           {client.activityType}
                         </Badge>
                       )}
-                      {client.productCategory && (
-                        <Badge variant="secondary" className="text-xs">
-                          {client.productCategory}
-                        </Badge>
-                      )}
+                     {client.productCategory && (
+                          <Badge variant="secondary" className="text-xs">
+                            {client.productCategory}
+                          </Badge>
+                        )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button size="sm" variant="secondary" className="h-7 px-2.5 text-xs">
-                            + Напоминание
-                          </Button>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-full border border-slate-200/70 bg-white/70 px-2.5 py-1 text-xs font-medium text-foreground/80 shadow-sm transition hover:bg-white"
+                          >
+                            <span className="text-slate-500">+</span>
+                            <span>Напоминание</span>
+                          </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent>
+                        <DropdownMenuContent align="start">
                           <DropdownMenuItem onSelect={() => handleSetReminder(5)}>
                             через 5 минут
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onSelect={() => handleSetReminderAt(new Date(Date.now() + 60 * 60000), "Через час")}
+                            onSelect={() =>
+                              handleSetReminderAt(new Date(Date.now() + 60 * 60000), "Через час")
+                            }
                           >
                             через час
                           </DropdownMenuItem>
@@ -2845,7 +3010,7 @@ const ClientDetailSheet = ({
                         </DropdownMenuContent>
                       </DropdownMenu>
                       {reminderAt && (
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs font-medium text-slate-400">
                           {formatDateTime(reminderAt)}
                         </span>
                       )}
@@ -2878,66 +3043,173 @@ const ClientDetailSheet = ({
             onValueChange={(value) => setActiveTab(value as "deals" | "quotes")}
             className="flex min-h-0 flex-1 flex-col"
           >
-            <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-6 xl:grid-cols-[1.65fr,0.95fr]">
+            <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-6 xl:grid-cols-[1fr,320px]">
               <div className="flex min-h-0 min-w-0 flex-col">
-                <TabsList className="grid h-auto w-full grid-cols-1 gap-3 bg-transparent p-0 sm:grid-cols-2">
+                <TabsList className="grid h-auto w-full grid-cols-2 gap-3 bg-transparent p-0">
                   <TabsTrigger
                     value="quotes"
-                    className="flex w-full items-center justify-between gap-2 rounded-[12px] border border-transparent bg-white/70 px-4 py-3 text-left text-sm font-medium text-foreground/80 shadow-sm transition hover:bg-white data-[state=active]:border-slate-200/70 data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow"
+                    className="group flex w-full items-center justify-between gap-3 rounded-[4px] border border-slate-200 bg-white px-4 py-2 text-left text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50 data-[state=active]:border-sky-500 data-[state=active]:shadow-[0_0_0_1px_rgba(14,165,233,0.2)]"
                   >
-                    <div className="flex items-center gap-2">
-                      <FileSpreadsheet className="h-4 w-4" />
-                      Просчеты
-                    </div>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                      0
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate">Просчеты</span>
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-[2px] bg-slate-900 px-2 text-[11px] font-semibold leading-none text-white">
+                        {dealList.length}
+                      </span>
                     </span>
+                    <ChevronRight className="h-4 w-4 text-slate-400" />
                   </TabsTrigger>
                   <TabsTrigger
                     value="deals"
-                    className="flex w-full items-center justify-between gap-2 rounded-[12px] border border-transparent bg-white/70 px-4 py-3 text-left text-sm font-medium text-foreground/80 shadow-sm transition hover:bg-white data-[state=active]:border-slate-200/70 data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow"
+                    className="group flex w-full items-center justify-between gap-3 rounded-[4px] border border-slate-200 bg-white px-4 py-2 text-left text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50 data-[state=active]:border-sky-500 data-[state=active]:shadow-[0_0_0_1px_rgba(14,165,233,0.2)]"
                   >
-                    <div className="flex items-center gap-2">
-                      <FileSpreadsheet className="h-4 w-4" />
-                      Сделки
-                    </div>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                      {dealList.length}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate">Сделки</span>
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-[2px] bg-slate-900 px-2 text-[11px] font-semibold leading-none text-white">
+                        {dealList.length}
+                      </span>
                     </span>
+                    <ChevronRight className="h-4 w-4 text-slate-400" />
                   </TabsTrigger>
                 </TabsList>
 
-                <div className="mt-4 flex-1 min-h-0 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
-                <TabsContent value="quotes" className="mt-0 space-y-4">
-                  <InfoCard title="Просчеты">
-                    <p className="text-sm text-muted-foreground">Просчетов пока нет.</p>
-                  </InfoCard>
-                </TabsContent>
+                <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
+                  <TabsContent value="quotes" className="mt-0 space-y-4">
+                    <div className="overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200/70 bg-slate-50 text-xs font-medium text-slate-500">
+                              <th className="w-11 px-3 py-2.5" />
+                              <th className="px-3 py-2.5 text-left">Статус</th>
+                              <th className="px-3 py-2.5 text-left">Дата создания</th>
+                              <th className="px-3 py-2.5 text-left">Товар или услуга</th>
+                              <th className="px-3 py-2.5 text-left">Ед. измерения</th>
+                              <th className="px-3 py-2.5 text-left">Кол-во</th>
+                              <th className="px-3 py-2.5 text-left">Цена</th>
+                              <th className="px-3 py-2.5 text-left">№ Дек, почты</th>
+                              <th className="px-3 py-2.5 text-left">Комментарии</th>
+                              <th className="px-3 py-2.5 text-right" />
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dealList.length ? (
+                              dealList.map((deal, index) => {
+                                const variant = index % 3;
+                                const statusLabel =
+                                  variant === 0 ? "Проектно" : variant === 1 ? "Новый" : "Отказ";
+                                const statusTone =
+                                  variant === 0
+                                    ? "bg-amber-500"
+                                    : variant === 1
+                                    ? "bg-emerald-500"
+                                    : "bg-rose-500";
 
-                <TabsContent value="deals" className="mt-0 space-y-4">
-                  <InfoCard
-                    title="Сделки"
-                    titleAddon={
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() =>
-                          setDealFormOpen((prev) => {
-                            const next = !prev;
-                            if (next) {
-                              setEditingDealId(null);
-                              setDealForm(buildEmptyDealForm());
-                            }
-                            return next;
-                          })
-                        }
-                      >
-                        Добавить +
-                      </Button>
-                    }
-                  >
-                    {dealFormOpen && (
-                      <div className="rounded-[12px] border border-slate-200/60 bg-white/70 p-3">
+                                return (
+                                  <tr key={deal.id} className="border-b border-slate-200/60 last:border-b-0">
+                                    <td className="px-3 py-2">
+                                      <button
+                                        type="button"
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-rose-500 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                                        disabled={!isEditing}
+                                        onClick={() => handleDeleteDeal(deal.id)}
+                                        aria-label="Удалить"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <span
+                                        className={cn(
+                                          "inline-flex items-center rounded-[4px] px-2 py-0.5 text-[11px] font-semibold text-white",
+                                          statusTone
+                                        )}
+                                      >
+                                        {statusLabel}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                                      {formatDate(deal.createdAt)}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <div className="min-w-[220px] text-sm font-medium text-foreground">
+                                        {deal.title}
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-2 text-xs text-muted-foreground">{deal.unit}</td>
+                                    <td className="px-3 py-2 text-sm">{formatAmount(deal.qty)}</td>
+                                    <td className="px-3 py-2 text-sm">{formatAmount(deal.price)}</td>
+                                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                                      <div className="space-y-1">
+                                        <div className="font-medium text-slate-700">
+                                          {deal.declarationNumber || "—"}
+                                        </div>
+                                        {(deal.recipientName || deal.recipientPhone) && (
+                                          <div className="space-y-0.5 text-[11px] text-slate-400">
+                                            {deal.recipientName && (
+                                              <div className="truncate">{deal.recipientName}</div>
+                                            )}
+                                            {deal.recipientPhone && (
+                                              <a
+                                                href={`tel:${deal.recipientPhone.replace(/[^\\d+]/g, "")}`}
+                                                className="text-sky-600 hover:underline"
+                                              >
+                                                {deal.recipientPhone}
+                                              </a>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-2 text-sm">{deal.comment || "—"}</td>
+                                    <td className="px-3 py-2 text-right">
+                                      <button
+                                        type="button"
+                                        className="h-7 rounded-md border border-slate-200/70 bg-white px-3 text-[12px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                                      >
+                                        Одобрить
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            ) : (
+                              <tr>
+                                <td colSpan={10} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                                  Просчетов пока нет.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="deals" className="mt-0 space-y-4">
+                    {isEditing && (
+                      <div className="flex justify-end">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="h-8 px-3 text-xs"
+                          onClick={() =>
+                            setDealFormOpen((prev) => {
+                              const next = !prev;
+                              if (next) {
+                                setEditingDealId(null);
+                                setDealForm(buildEmptyDealForm());
+                              }
+                              return next;
+                            })
+                          }
+                        >
+                          Добавить +
+                        </Button>
+                      </div>
+                    )}
+
+                    {isEditing && dealFormOpen && (
+                      <div className="rounded-[4px] border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                         <div className="grid gap-3 md:grid-cols-2">
                           <Input
                             type="date"
@@ -3061,203 +3333,296 @@ const ClientDetailSheet = ({
                       </div>
                     )}
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse text-sm">
+                    <div className="overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-sm">
                         <thead>
-                          <tr className="border-b border-slate-200/70 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                            <th className="px-3 py-2 text-left">Дата</th>
-                            <th className="px-3 py-2 text-left">Товар / услуга</th>
-                            <th className="px-3 py-2 text-left">Ед.</th>
+                          <tr className="border-b border-slate-200/70 bg-slate-50 text-xs font-medium text-slate-500">
+                            <th className="w-11 px-3 py-2" />
+                            <th className="px-3 py-2 text-left">Статус</th>
+                            <th className="px-3 py-2 text-left">Дата создания</th>
+                            <th className="px-3 py-2 text-left">Товар или услуга</th>
+                            <th className="px-3 py-2 text-left">Ед. измерения</th>
                             <th className="px-3 py-2 text-left">Кол-во</th>
                             <th className="px-3 py-2 text-left">Цена</th>
-                            <th className="px-3 py-2 text-left">№ дек.</th>
-                            <th className="px-3 py-2 text-left">Документы</th>
-                            <th className="px-3 py-2 text-left">Комментарий</th>
-                            <th className="px-3 py-2 text-right">Сумма</th>
+                            <th className="px-3 py-2 text-left">№ Дек, почты</th>
+                            <th className="px-3 py-2 text-left">Комментарии</th>
                             <th className="px-3 py-2 text-right"></th>
                           </tr>
                         </thead>
                         <tbody>
                           {dealList.length ? (
-                            dealList.map((deal) => (
-                              <tr key={deal.id} className="border-b border-slate-200/60 last:border-b-0">
-                                <td className="px-3 py-3 text-xs text-muted-foreground">
-                                  {formatDate(deal.createdAt)}
-                                </td>
-                                <td className="px-3 py-3">
-                                  <div className="text-sm font-medium text-foreground">{deal.title}</div>
-                                </td>
-                                <td className="px-3 py-3 text-xs text-muted-foreground">{deal.unit}</td>
-                                <td className="px-3 py-3 text-sm">{formatAmount(deal.qty)}</td>
-                                <td className="px-3 py-3 text-sm">{formatAmount(deal.price)}</td>
-                                <td className="px-3 py-3 text-xs text-muted-foreground">
-                                  <div>{deal.declarationNumber || "—"}</div>
-                                  {deal.recipientName && (
-                                    <div className="mt-1 text-xs text-foreground">{deal.recipientName}</div>
-                                  )}
-                                  {deal.recipientPhone && (
-                                    <div className="text-[11px] text-muted-foreground">{deal.recipientPhone}</div>
-                                  )}
-                                </td>
-                                <td className="px-3 py-3">
-                                  {deal.documents && deal.documents.length ? (
-                                    <div className="flex flex-wrap gap-1">
-                                      {deal.documents.map((doc) => (
-                                        <span
-                                          key={doc}
-                                          className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600"
-                                        >
-                                          {doc}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">—</span>
-                                  )}
-                                </td>
-                                <td className="px-3 py-3 text-sm">{deal.comment || "—"}</td>
-                                <td className="px-3 py-3 text-right text-sm font-semibold">
-                                  {formatAmount(deal.amount)}
-                                </td>
-                                <td className="px-3 py-3 text-right">
-                                  <div className="flex items-center justify-end gap-2">
+                            dealList.map((deal, index) => {
+                              const variant = index % 3;
+                              const statusLabel =
+                                variant === 0 ? "Проектно" : variant === 1 ? "Новый" : "Отказ";
+                              const statusTone =
+                                variant === 0
+                                  ? "bg-amber-500"
+                                  : variant === 1
+                                  ? "bg-emerald-500"
+                                  : "bg-rose-500";
+
+                              return (
+                                <tr key={deal.id} className="border-b border-slate-200/60 last:border-b-0">
+                                  <td className="px-3 py-2">
                                     <button
                                       type="button"
-                                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/60 text-muted-foreground transition hover:bg-slate-50/80"
-                                      onClick={() => handleEditDeal(deal)}
-                                      aria-label="Редактировать"
-                                    >
-                                      <Pencil className="h-3.5 w-3.5" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/60 text-rose-500 transition hover:bg-rose-50/80"
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-rose-500 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                                      disabled={!isEditing}
                                       onClick={() => handleDeleteDeal(deal.id)}
                                       aria-label="Удалить"
                                     >
-                                      <Trash2 className="h-3.5 w-3.5" />
+                                      <Trash2 className="h-4 w-4" />
                                     </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <span
+                                      className={cn(
+                                        "inline-flex items-center rounded-[4px] px-2 py-0.5 text-[11px] font-semibold text-white",
+                                        statusTone
+                                      )}
+                                    >
+                                      {statusLabel}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                                    {formatDate(deal.createdAt)}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <div className="min-w-[220px] text-sm font-medium text-foreground">
+                                      {deal.title}
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2 text-xs text-muted-foreground">{deal.unit}</td>
+                                  <td className="px-3 py-2 text-sm">{formatAmount(deal.qty)}</td>
+                                  <td className="px-3 py-2 text-sm">{formatAmount(deal.price)}</td>
+                                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                                    <div className="space-y-1">
+                                      <div className="font-medium text-slate-700">
+                                        {deal.declarationNumber || "—"}
+                                      </div>
+                                      {(deal.recipientName || deal.recipientPhone) && (
+                                        <div className="space-y-0.5 text-[11px] text-slate-400">
+                                          {deal.recipientName && <div className="truncate">{deal.recipientName}</div>}
+                                          {deal.recipientPhone && (
+                                            <a
+                                              href={`tel:${deal.recipientPhone.replace(/[^\\d+]/g, "")}`}
+                                              className="text-sky-600 hover:underline"
+                                            >
+                                              {deal.recipientPhone}
+                                            </a>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2 text-sm">{deal.comment || "—"}</td>
+                                  <td className="px-3 py-2 text-right">
+                                    {isEditing ? (
+                                      <div className="flex items-center justify-end gap-2">
+                                        <button
+                                          type="button"
+                                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200/70 text-muted-foreground transition hover:bg-slate-50/80"
+                                          onClick={() => handleEditDeal(deal)}
+                                          aria-label="Редактировать"
+                                        >
+                                          <Pencil className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200/70 text-rose-500 transition hover:bg-rose-50/80"
+                                          onClick={() => handleDeleteDeal(deal.id)}
+                                          aria-label="Удалить"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="h-7 rounded-md border border-slate-200/70 bg-white px-3 text-[12px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                                      >
+                                        Одобрить
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })
                           ) : (
                             <tr>
-                              <td colSpan={10} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                              <td colSpan={10} className="px-3 py-10 text-center text-sm text-muted-foreground">
                                 Сделок пока нет.
                               </td>
                             </tr>
                           )}
                         </tbody>
-                      </table>
-                    </div>
-                  </InfoCard>
-                  <InfoCard
-                    title="Комментарии"
-                  >
-                    <div className="space-y-3">
-                      <textarea
-                        className="ios-input min-h-[90px]"
-                        placeholder="Добавить комментарий"
-                        value={commentInput}
-                        onChange={(event) => setCommentInput(event.target.value)}
-                      />
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <Button size="sm" onClick={handleAddComment}>
-                          Добавить
-                        </Button>
+                        </table>
                       </div>
-                      <div className="space-y-3 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
-                        {sortedComments.length ? (
-                          sortedComments.map((comment) => {
-                            const authorName =
-                              comment.authorName || client.responsibleName || currentUserName || "Менеджер";
-                            const canEdit = isDirector || comment.authorId === currentUserId;
-                            const canDelete =
-                              isDirector || (allowManagerDelete && comment.authorId === currentUserId);
-                            return (
-                              <div
-                                key={comment.id}
-                                className="rounded-[12px] border border-slate-200/60 bg-white/70 px-3 py-2"
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="text-xs text-muted-foreground">
-                                    <span className="font-semibold text-foreground">{authorName}</span>
-                                    <span className="ml-2">{formatDateTime(comment.createdAt)}</span>
-                                    {comment.updatedAt && <span className="ml-2">(изменено)</span>}
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    {canEdit && (
-                                      <button
-                                        type="button"
-                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/60 text-muted-foreground transition hover:bg-slate-50/80"
-                                        onClick={() => handleStartEditComment(comment.id, comment.text)}
-                                        aria-label="Редактировать"
-                                      >
-                                        <Pencil className="h-3.5 w-3.5" />
-                                      </button>
-                                    )}
-                                    {canDelete && (
-                                      <button
-                                        type="button"
-                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/60 text-rose-500 transition hover:bg-rose-50/80"
-                                        onClick={() => handleDeleteComment(comment.id)}
-                                        aria-label="Удалить"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
-                                    )}
-                                  </div>
+                    </div>
+                  </TabsContent>
+
+                  <div className="overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                    <div className="flex items-center gap-3 bg-slate-50/80 px-4 py-3">
+                      <button
+                        type="button"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-[8px] text-slate-500 transition hover:bg-white/80"
+                        aria-label="Прикрепить"
+                      >
+                        <Paperclip className="h-4 w-4" />
+                      </button>
+                      <div className="relative flex-1">
+                        <input
+                          className="h-10 w-full rounded-[8px] border border-slate-200/70 bg-white px-3 pr-11 text-sm outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                          placeholder="Отправить сообщение"
+                          value={commentInput}
+                          onChange={(event) => setCommentInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              handleAddComment();
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[6px] text-slate-400 transition hover:bg-slate-50"
+                          aria-label="Эмодзи"
+                        >
+                          <Smile className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-sky-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-600 disabled:cursor-default disabled:opacity-60"
+                        onClick={handleAddComment}
+                        disabled={!commentInput.trim()}
+                      >
+                        Отправить
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-[8px] text-slate-500 transition hover:bg-slate-100"
+                        aria-label="Меню"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="max-h-[420px] overflow-y-auto px-4 py-4 custom-scrollbar">
+                      <div className="space-y-4">
+                        {chatTimeline.length ? (
+                          chatTimeline.map((item) => {
+                            if (item.type === "day") {
+                              return (
+                                <div key={item.id} className="flex justify-center">
+                                  <span className="text-[11px] font-medium text-slate-400">
+                                    {item.label}
+                                  </span>
                                 </div>
-                                {editingCommentId === comment.id ? (
-                                  <div className="mt-2 space-y-2">
-                                    <textarea
-                                      className="ios-input min-h-[70px]"
-                                      value={editingCommentText}
-                                      onChange={(event) => setEditingCommentText(event.target.value)}
-                                    />
-                                    <div className="flex gap-2">
-                                      <Button size="sm" onClick={handleSaveEditedComment}>
-                                        Сохранить
-                                      </Button>
-                                      <Button size="sm" variant="ghost" onClick={handleCancelEditComment}>
-                                        Отмена
-                                      </Button>
+                              );
+                            }
+
+                            const authorName =
+                              item.msg.authorName || client.responsibleName || currentUserName || "Менеджер";
+                            const canEdit = isDirector || item.msg.authorId === currentUserId;
+                            const canDelete =
+                              isDirector || (allowManagerDelete && item.msg.authorId === currentUserId);
+
+                            return (
+                              <div key={item.id} className="group flex gap-3">
+                                <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-[8px] border border-slate-200/60 bg-white text-slate-400">
+                                  <User className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                                    <span className="font-semibold text-slate-700">{authorName}</span>
+                                    <span>{formatClockTime(item.msg.createdAt)}</span>
+                                    <div className="ml-auto flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                                      {canEdit && (
+                                        <button
+                                          type="button"
+                                          className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                                          onClick={() => handleStartEditComment(item.msg.id, item.msg.text)}
+                                          aria-label="Редактировать"
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
+                                      {canDelete && (
+                                        <button
+                                          type="button"
+                                          className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
+                                          onClick={() => handleDeleteComment(item.msg.id)}
+                                          aria-label="Удалить"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
-                                ) : (
-                                  <p className="mt-2 text-sm text-foreground">{comment.text}</p>
-                                )}
+
+                                  {editingCommentId === item.msg.id ? (
+                                    <div className="mt-2 space-y-2">
+                                      <textarea
+                                        className="w-full rounded-[8px] border border-slate-200/70 bg-white px-3 py-2 text-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                                        value={editingCommentText}
+                                        onChange={(event) => setEditingCommentText(event.target.value)}
+                                      />
+                                      <div className="flex gap-2">
+                                        <Button size="sm" onClick={handleSaveEditedComment}>
+                                          Сохранить
+                                        </Button>
+                                        <Button size="sm" variant="ghost" onClick={handleCancelEditComment}>
+                                          Отмена
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="mt-1 whitespace-pre-line rounded-[6px] bg-sky-50 px-3 py-2 text-sm text-slate-700">
+                                      {item.msg.text}
+                                    </div>
+                                  )}
+                                  {item.msg.updatedAt && (
+                                    <div className="mt-1 text-[10px] text-slate-400">(изменено)</div>
+                                  )}
+                                </div>
                               </div>
                             );
                           })
                         ) : (
-                          <p className="text-sm text-muted-foreground">Комментариев нет.</p>
+                          <p className="py-12 text-center text-sm text-muted-foreground">Сообщений нет.</p>
                         )}
                       </div>
                     </div>
-                  </InfoCard>
-                </TabsContent>
+                  </div>
 
                 </div>
               </div>
 
-              <div className="client-details-side flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
+              <div className="client-details-side flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto pr-0 custom-scrollbar">
                 <InfoCard
                   title="Коммуникация"
                   titleAddon={
                     <Button
-                      size="icon"
-                      variant="secondary"
-                      className="h-8 w-8"
-                      onClick={() => handleScheduleCommunication()}
-                      aria-label="Запланировать"
+                      size="sm"
+                      variant="outline"
+                      className={cn(
+                        "h-7 px-3 text-xs",
+                        commFormOpen
+                          ? "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700"
+                          : "bg-white"
+                      )}
+                      onClick={() => setCommFormOpen((prev) => !prev)}
                     >
-                      <Plus className="h-4 w-4" />
+                      {commFormOpen ? "Отмена" : "Добавить +"}
                     </Button>
                   }
                 >
-                  <div className="space-y-3">
+                  {commFormOpen ? (
+                    <div className="space-y-3">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <Input
                         type="date"
@@ -3352,7 +3717,7 @@ const ClientDetailSheet = ({
                                     </div>
                                   )}
                                   {closingCommId === item.id && (
-                                    <div className="mt-2 rounded-[10px] border border-slate-200/60 bg-white/70 p-2">
+                                    <div className="mt-2 rounded-[4px] border border-slate-200 bg-white p-2">
                                       <div className="flex flex-wrap gap-2">
                                         <Button
                                           size="sm"
@@ -3403,185 +3768,246 @@ const ClientDetailSheet = ({
                         </div>
                       </CollapsibleContent>
                     </Collapsible>
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 rounded-[4px] border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        <Calendar className="h-4 w-4 text-slate-400" />
+                        <span className="truncate">{nextCommunicationPill}</span>
+                      </div>
+
+                      {nextCommunicationDate && (
+                        <div className="space-y-2">
+                          <div className="text-[11px] font-semibold text-slate-400">Вопросы к встрече</div>
+                          {meetingTodoItems.length ? (
+                            <div className="divide-y divide-slate-200/60">
+                              {meetingTodoItems.map((text, index) => (
+                                <label
+                                  key={`${index}-${text}`}
+                                  className="flex items-start gap-2 py-2 text-xs text-slate-700"
+                                >
+                                  <input type="checkbox" className="mt-0.5 h-4 w-4 accent-sky-600" />
+                                  <span className="flex-1">
+                                    {text}
+                                    <span className="mt-0.5 block text-[11px] text-slate-400">
+                                      {client.responsibleName ||
+                                        responsible?.name ||
+                                        currentUserName ||
+                                        "Менеджер"}
+                                    </span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          ) : meetingNoteText ? (
+                            <p className="text-xs text-slate-700">{meetingNoteText}</p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">Задач нет.</p>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-semibold text-slate-400">Без времени</div>
+                        {communicationTodoItems.length ? (
+                          <div className="divide-y divide-slate-200/60">
+                            {communicationTodoItems.map((text, index) => (
+                              <label
+                                key={`${index}-${text}`}
+                                className="flex items-start gap-2 py-2 text-xs text-slate-700"
+                              >
+                                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-sky-600" />
+                                <span className="flex-1">
+                                  {text}
+                                  <span className="mt-0.5 block text-[11px] text-slate-400">
+                                    {client.responsibleName || responsible?.name || currentUserName || "Менеджер"}
+                                  </span>
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Задач нет.</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </InfoCard>
                 <InfoCard title="Ответственный" className="animate-fade-up">
                   {responsible ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-sm font-semibold text-primary">
-                          {getInitials(responsible.name)}
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold">{responsible.name}</p>
-                          <p className="text-xs text-muted-foreground">{responsible.position || "—"}</p>
-                        </div>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 rounded-[4px] bg-slate-50 px-3 py-2 text-left transition hover:bg-slate-100"
+                    >
+                      <div className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200/60 bg-white text-slate-400">
+                        <User className="h-4 w-4" />
                       </div>
-                      <div className="space-y-1 text-xs text-muted-foreground">
-                        {responsible.email && (
-                          <button
-                            type="button"
-                            className="flex items-center gap-2 text-left transition hover:text-foreground"
-                            onClick={() => {
-                              navigator.clipboard.writeText(responsible.email || "");
-                              toast({ title: "Email скопирован", description: responsible.email });
-                            }}
-                          >
-                            <Mail className="h-3.5 w-3.5" />
-                            <span>{responsible.email}</span>
-                          </button>
-                        )}
-                        {responsible.phones?.map((phone) => (
-                          <button
-                            key={phone}
-                            type="button"
-                            className="flex items-center gap-2 text-left transition hover:text-foreground"
-                            onClick={() => {
-                              navigator.clipboard.writeText(phone);
-                              toast({ title: "Телефон скопирован", description: phone });
-                            }}
-                          >
-                            <Phone className="h-3.5 w-3.5" />
-                            <span>{phone}</span>
-                          </button>
-                        ))}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">{responsible.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {responsible.position || "—"}
+                        </p>
                       </div>
-                    </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </button>
                   ) : (
                     <p className="text-sm text-muted-foreground">Ответственный не назначен.</p>
                   )}
                 </InfoCard>
 
-                <Collapsible open={contactsOpen} onOpenChange={setContactsOpen}>
-                  <InfoCard
-                    title={`Контактные лица (${contactList.length})`}
-                    className="animate-fade-up"
-                    titleAddon={
-                      <CollapsibleTrigger asChild>
-                        <button
-                          type="button"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/60 text-muted-foreground transition hover:bg-slate-50/80"
-                          aria-label="Свернуть контакты"
-                        >
-                          <ChevronDown
-                            className={cn("h-4 w-4 transition-transform", !contactsOpen && "-rotate-90")}
-                          />
-                        </button>
-                      </CollapsibleTrigger>
-                    }
-                  >
-                    <CollapsibleContent>
-                      {isEditing ? (
-                        <div className="space-y-3">
-                          {contactList.length ? (
-                            contactList.map((contact, index) => (
-                              <div
-                                key={contact.id}
-                                className="rounded-2xl border border-slate-200/60 bg-white/70 p-3 space-y-2"
+                <InfoCard title="Контактные лица" className="animate-fade-up" bodyClassName="space-y-0">
+                  {isEditing ? (
+                    <div className="space-y-3">
+                      {contactList.length ? (
+                        contactList.map((contact, index) => (
+                          <div
+                            key={contact.id}
+                            className="space-y-2 rounded-[10px] border border-slate-200/60 bg-slate-50/50 p-3"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <Input
+                                className="h-9"
+                                value={contact.name}
+                                placeholder="Имя и фамилия"
+                                onChange={(event) => updateContact(index, { name: event.target.value })}
+                              />
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-9 w-9"
+                                onClick={() => handleRemoveContact(index)}
+                                aria-label="Удалить контакт"
                               >
-                                <div className="flex items-start justify-between gap-2">
-                                  <Input
-                                    className="h-9"
-                                    value={contact.name}
-                                    placeholder="Имя и фамилия"
-                                    onChange={(event) =>
-                                      updateContact(index, { name: event.target.value })
-                                    }
-                                  />
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-9 w-9"
-                                    onClick={() => handleRemoveContact(index)}
-                                    aria-label="Удалить контакт"
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                                <Input
-                                  className="h-9"
-                                  value={contact.position ?? ""}
-                                  placeholder="Должность"
-                                  onChange={(event) =>
-                                    updateContact(index, { position: event.target.value })
-                                  }
-                                />
-                                <Input
-                                  className="h-9"
-                                  value={(contact.phones ?? []).join(", ")}
-                                  placeholder="Телефоны через запятую"
-                                  onChange={(event) =>
-                                    updateContact(index, {
-                                      phones: event.target.value
-                                        .split(",")
-                                        .map((item) => item.trim())
-                                        .filter(Boolean),
-                                    })
-                                  }
-                                />
-                                <Input
-                                  className="h-9"
-                                  value={(contact.emails ?? []).join(", ")}
-                                  placeholder="Email через запятую"
-                                  onChange={(event) =>
-                                    updateContact(index, {
-                                      emails: event.target.value
-                                        .split(",")
-                                        .map((item) => item.trim())
-                                        .filter(Boolean),
-                                    })
-                                  }
-                                />
-                              </div>
-                            ))
-                          ) : (
-                            <p className="text-sm text-muted-foreground">Контактов нет.</p>
-                          )}
-                          <Button size="sm" variant="secondary" onClick={handleAddContact}>
-                            Добавить контакт
-                          </Button>
-                        </div>
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <Input
+                              className="h-9"
+                              value={contact.position ?? ""}
+                              placeholder="Должность"
+                              onChange={(event) => updateContact(index, { position: event.target.value })}
+                            />
+                            <Input
+                              className="h-9"
+                              value={(contact.phones ?? []).join(", ")}
+                              placeholder="Телефоны через запятую"
+                              onChange={(event) =>
+                                updateContact(index, {
+                                  phones: event.target.value
+                                    .split(",")
+                                    .map((item) => item.trim())
+                                    .filter(Boolean),
+                                })
+                              }
+                            />
+                            <Input
+                              className="h-9"
+                              value={(contact.emails ?? []).join(", ")}
+                              placeholder="Email через запятую"
+                              onChange={(event) =>
+                                updateContact(index, {
+                                  emails: event.target.value
+                                    .split(",")
+                                    .map((item) => item.trim())
+                                    .filter(Boolean),
+                                })
+                              }
+                            />
+                          </div>
+                        ))
                       ) : (
-                        <div className="space-y-3">
-                          {contactList.length ? (
-                            contactList.map((contact) => (
-                              <div key={contact.id} className="rounded-[10px] bg-slate-50 px-3 py-2">
-                                <div className="flex items-start gap-3">
-                                  <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-primary/10 text-xs font-semibold text-primary">
-                                    {getInitials(contact.name)}
-                                  </div>
-                                  <div className="flex-1 space-y-1">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <p className="text-sm font-semibold text-foreground">{contact.name}</p>
-                                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">{contact.position || "—"}</p>
-                                    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                                      {contact.phones.map((phone) => (
-                                        <div key={phone} className="flex items-center gap-2">
-                                          <Phone className="h-3.5 w-3.5" />
-                                          <span>{phone}</span>
-                                        </div>
-                                      ))}
-                                      {contact.emails.map((email) => (
-                                        <div key={email} className="flex items-center gap-2">
-                                          <Mail className="h-3.5 w-3.5" />
-                                          <span>{email}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
+                        <p className="text-sm text-muted-foreground">Контактов нет.</p>
+                      )}
+                      <Button size="sm" variant="secondary" onClick={handleAddContact}>
+                        Добавить контакт
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-200/60">
+                      {contactList.length ? (
+                        contactList.map((contact) => {
+                          const isActive = contact.id === activeContactId;
+                          return (
+                            <div key={contact.id} className={cn(isActive && "bg-sky-50")}>
+                              <button
+                                type="button"
+                                className={cn(
+                                  "flex w-full items-center gap-3 px-3 py-2 text-left transition",
+                                  isActive ? "hover:bg-sky-100/60" : "hover:bg-slate-50"
+                                )}
+                                onClick={() => setActiveContactId(isActive ? null : contact.id)}
+                              >
+                                <div
+                                  className={cn(
+                                    "flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200/60 bg-white text-slate-400",
+                                    isActive && "border-sky-500 bg-sky-500 text-white"
+                                  )}
+                                >
+                                  <User className="h-4 w-4" />
                                 </div>
-                              </div>
-                            ))
-                          ) : (
-                            <p className="text-sm text-muted-foreground">Контактов нет.</p>
-                          )}
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="truncate text-sm font-semibold text-foreground">{contact.name}</p>
+                                    {isActive ? (
+                                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                    ) : (
+                                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                    )}
+                                  </div>
+                                  <p className="truncate text-xs text-muted-foreground">
+                                    {contact.position || "—"}
+                                  </p>
+                                </div>
+                              </button>
+
+                              {isActive && (
+                                <div className="space-y-3 px-3 pb-3 pl-[3.75rem] text-xs">
+                                  {(contact.phones ?? []).map((phone, index) => {
+                                    const label =
+                                      index === 0
+                                        ? "Телефон (мобильный)"
+                                        : index === 1
+                                        ? "Телефон (рабочий)"
+                                        : `Телефон ${index + 1}`;
+                                    return (
+                                      <div key={`${phone}-${index}`} className="space-y-1">
+                                        <div className="text-[11px] font-semibold text-slate-400">{label}</div>
+                                        <a
+                                          href={`tel:${phone.replace(/[^\\d+]/g, "")}`}
+                                          className="text-sky-600 hover:underline"
+                                        >
+                                          {phone}
+                                        </a>
+                                      </div>
+                                    );
+                                  })}
+
+                                  {(contact.emails ?? []).map((email, index) => (
+                                    <div key={`${email}-${index}`} className="space-y-1">
+                                      <div className="text-[11px] font-semibold text-slate-400">
+                                        {index === 0 ? "Почта" : `Почта ${index + 1}`}
+                                      </div>
+                                      <a href={`mailto:${email}`} className="text-sky-600 hover:underline">
+                                        {email}
+                                      </a>
+                                    </div>
+                                  ))}
+                                  {!((contact.phones ?? []).length || (contact.emails ?? []).length) && (
+                                    <p className="text-xs text-muted-foreground">Контактов нет.</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="px-3 py-2">
+                          <p className="text-sm text-muted-foreground">Контактов нет.</p>
                         </div>
                       )}
-                    </CollapsibleContent>
-                  </InfoCard>
-                </Collapsible>
+                    </div>
+                  )}
+                </InfoCard>
 
                 <InfoCard title="Информация о компании">
                   {isEditing ? (
@@ -3647,7 +4073,7 @@ const ClientDetailSheet = ({
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="none">Не выбран</SelectItem>
-                            {SOURCE_CHANNELS.map((option) => (
+                            {sourceChannelOptions.map((option) => (
                               <SelectItem key={option} value={option}>
                                 {option}
                               </SelectItem>
@@ -3716,6 +4142,56 @@ const ClientDetailSheet = ({
                     </>
                   )}
                 </InfoCard>
+
+                <InfoCard title="Документы" className="animate-fade-up" bodyClassName="space-y-0">
+                  <div className="divide-y divide-slate-200/60">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-50"
+                    >
+                      <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-slate-50 text-sky-600">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">
+                        Договоры
+                      </span>
+                      <span className="inline-flex h-5 min-w-6 items-center justify-center rounded-[3px] bg-slate-100 px-2 text-[11px] font-semibold text-slate-600">
+                        {documentSummary.contracts}
+                      </span>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-50"
+                    >
+                      <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-slate-50 text-emerald-600">
+                        <FileSpreadsheet className="h-4 w-4" />
+                      </div>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">
+                        Накладная
+                      </span>
+                      <span className="inline-flex h-5 min-w-6 items-center justify-center rounded-[3px] bg-slate-100 px-2 text-[11px] font-semibold text-slate-600">
+                        {documentSummary.invoices}
+                      </span>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-50"
+                    >
+                      <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-slate-50 text-indigo-600">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">КП</span>
+                      <span className="inline-flex h-5 min-w-6 items-center justify-center rounded-[3px] bg-slate-100 px-2 text-[11px] font-semibold text-slate-600">
+                        {documentSummary.quotes}
+                      </span>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  </div>
+                </InfoCard>
               </div>
             </div>
           </Tabs>
@@ -3740,15 +4216,15 @@ const InfoCard = ({
 }) => (
   <div
     className={cn(
-      "rounded-[10px] border border-slate-200/60 bg-white/80 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.05)]",
+      "rounded-[4px] border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
       className
     )}
   >
-    <div className="mb-3 flex items-center justify-between gap-2">
-      <div className="text-sm font-semibold">{title}</div>
+    <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="text-sm font-semibold text-slate-800">{title}</div>
       {titleAddon}
     </div>
-    <div className={cn("space-y-2 text-sm", bodyClassName)}>{children}</div>
+    <div className={cn("space-y-2 text-[13px]", bodyClassName)}>{children}</div>
   </div>
 );
 
