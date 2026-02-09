@@ -8,7 +8,6 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
-  Copy,
   FileSpreadsheet,
   FileText,
   Filter,
@@ -1521,26 +1520,38 @@ const ContactsCell = ({
   onOpen: () => void;
   onClose: () => void;
 }) => {
-  const previewContact = contacts[0];
-  const previewPhone = previewContact?.phones?.[0] ?? "—";
-  const extraContacts = contacts.slice(1);
-  const hasExtraContacts = extraContacts.length > 0;
-  const hasContacts = contacts.length > 0;
+  const entries = useMemo(() => {
+    const next: { key: string; label: string; phone: string }[] = [];
+
+    contacts.forEach((contact) => {
+      const label = [contact.name, contact.position].filter(Boolean).join(" | ") || "—";
+      const phones = (contact.phones ?? []).filter(Boolean);
+
+      if (phones.length) {
+        phones.forEach((phone, index) => {
+          next.push({ key: `${contact.id}-${index}`, label, phone });
+        });
+        return;
+      }
+
+      next.push({ key: `${contact.id}-0`, label, phone: "—" });
+    });
+
+    return next;
+  }, [contacts]);
+
+  const previewEntry = entries[0];
+  const extraCount = Math.max(0, entries.length - 1);
+  const canOpen = extraCount > 0;
+  const hasContacts = entries.length > 0;
   const cellRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const [popoverSize, setPopoverSize] = useState({ w: 280, h: 180 });
 
-    const handleCopy = (event: React.MouseEvent | React.KeyboardEvent, phone: string) => {
-      event.stopPropagation();
-      if (!phone || phone === "—") return;
-      navigator.clipboard?.writeText(phone);
-      toast({ title: "Телефон скопирован", description: phone });
-    };
-
     const toggleOpen = () => {
-      if (!contacts.length) return;
+      if (!hasContacts || !canOpen) return;
       if (isOpen) {
         onClose();
       } else {
@@ -1549,15 +1560,15 @@ const ContactsCell = ({
     };
 
     useLayoutEffect(() => {
-      if (!isOpen || !hasContacts || !popoverRef.current) return;
+      if (!isOpen || !hasContacts || !canOpen || !popoverRef.current) return;
       const rect = popoverRef.current.getBoundingClientRect();
       if (rect.width && rect.height) {
         setPopoverSize({ w: rect.width, h: rect.height });
       }
-    }, [isOpen, hasContacts, contacts.length]);
+    }, [isOpen, hasContacts, canOpen, entries.length]);
 
     useLayoutEffect(() => {
-      if (!isOpen || !hasContacts || !listRef.current) return;
+      if (!isOpen || !hasContacts || !canOpen || !listRef.current) return;
       const listEl = listRef.current;
       const firstItem = listEl.querySelector<HTMLElement>(".contacts-popover__item");
       if (!firstItem) return;
@@ -1566,10 +1577,10 @@ const ContactsCell = ({
       const gap = 8;
       const maxHeight = itemHeight * 3 + gap * 2;
       listEl.style.setProperty("--contacts-list-max-height", `${Math.round(maxHeight)}px`);
-    }, [isOpen, hasContacts, contacts.length]);
+    }, [isOpen, hasContacts, canOpen, entries.length]);
 
     useEffect(() => {
-      if (!isOpen || !hasContacts) return;
+      if (!isOpen || !hasContacts || !canOpen) return;
       const handlePointerDown = (event: PointerEvent) => {
         const target = event.target as HTMLElement | null;
         if (!cellRef.current || !target) return;
@@ -1580,16 +1591,16 @@ const ContactsCell = ({
       };
       window.addEventListener("pointerdown", handlePointerDown);
       return () => window.removeEventListener("pointerdown", handlePointerDown);
-    }, [isOpen, hasContacts, onClose]);
+    }, [isOpen, hasContacts, canOpen, onClose]);
 
     useEffect(() => {
-      if (!isOpen || !hasContacts) return;
+      if (!isOpen || !hasContacts || !canOpen) return;
       const handleKeyDown = (event: KeyboardEvent) => {
         if (event.key === "Escape") onClose();
       };
       window.addEventListener("keydown", handleKeyDown);
       return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [isOpen, hasContacts, onClose]);
+    }, [isOpen, hasContacts, canOpen, onClose]);
 
     if (!hasContacts) {
       return <span className="text-sm text-foreground/60">—</span>;
@@ -1605,7 +1616,7 @@ const ContactsCell = ({
     let top = padding;
     let side: "top" | "bottom" = "bottom";
     if (triggerRect) {
-      left = triggerRect.left + triggerRect.width / 2 - width / 2;
+      left = triggerRect.left;
       left = clampValue(left, padding, Math.max(padding, viewportWidth - width - padding));
       top = triggerRect.bottom + 8;
       if (top + height > viewportHeight - padding) {
@@ -1626,42 +1637,28 @@ const ContactsCell = ({
         <button
           ref={triggerRef}
           type="button"
-          className={cn("contacts-preview", isOpen && "is-open")}
+          className={cn("contacts-preview", isOpen && "is-open", !canOpen && "is-disabled")}
           onClick={(event) => {
             event.stopPropagation();
+            if (!canOpen) return;
             toggleOpen();
           }}
           aria-expanded={isOpen}
         >
-          <div className="contacts-preview__row">
-            <div className="contacts-preview__name">
-              <span className="truncate">{previewContact?.name || "—"}</span>
-              {previewContact?.position && (
-                <span className="contacts-preview__role">{previewContact.position}</span>
-              )}
-            </div>
-            {previewPhone !== "—" ? (
-              <span
-                role="button"
-                tabIndex={0}
-                className="contacts-copy"
-                onClick={(event) => handleCopy(event, previewPhone)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    handleCopy(event, previewPhone);
-                  }
-                }}
-              >
-                <span>{previewPhone}</span>
-                <Copy className="h-3 w-3 opacity-60" />
+          <span className="contacts-preview__tag" title={previewEntry?.label ?? "—"}>
+            {previewEntry?.label ?? "—"}
+          </span>
+          <span className="contacts-preview__phone-row">
+            <span className="contacts-preview__phone-number">{previewEntry?.phone ?? "—"}</span>
+            {extraCount > 0 && (
+              <span className="contacts-preview__count">
+                +{extraCount}
+                <ChevronDown className="h-3 w-3" aria-hidden="true" />
               </span>
-            ) : (
-              <span className="contacts-preview__phone">—</span>
             )}
-          </div>
-          {hasExtraContacts && <span className="contacts-preview__count">{contacts.length}</span>}
+          </span>
         </button>
-        {isOpen && typeof document !== "undefined"
+        {isOpen && canOpen && typeof document !== "undefined"
           ? createPortal(
               <div
                 ref={popoverRef}
@@ -1669,36 +1666,15 @@ const ContactsCell = ({
                 data-side={side}
                 style={popoverStyle}
               >
-                <div className="contacts-popover__header">
-                  <span>{contacts.length === 1 ? "Контакт" : "Контакты"}</span>
-                </div>
                 <div ref={listRef} className="contacts-popover__list">
-                  {contacts.map((contact) => {
-                    const phones = contact.phones ?? [];
-                    const primaryPhone = phones[0] ?? "—";
-                    return (
-                      <div key={contact.id} className="contacts-popover__item">
-                        <div className="contacts-popover__item-row">
-                          <span className="contacts-popover__item-name">{contact.name || "—"}</span>
-                          {contact.position && (
-                            <span className="contacts-popover__item-role">{contact.position}</span>
-                          )}
-                        </div>
-                        {primaryPhone !== "—" ? (
-                          <button
-                            type="button"
-                            className="contacts-copy"
-                            onClick={(event) => handleCopy(event, primaryPhone)}
-                          >
-                            <span>{primaryPhone}</span>
-                            <Copy className="h-3 w-3 opacity-60" />
-                          </button>
-                        ) : (
-                          <span className="contacts-popover__item-phone">—</span>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {entries.map((entry) => (
+                    <div key={entry.key} className="contacts-popover__item">
+                      <span className="contacts-popover__tag" title={entry.label}>
+                        {entry.label}
+                      </span>
+                      <span className="contacts-popover__item-phone">{entry.phone}</span>
+                    </div>
+                  ))}
                 </div>
               </div>,
               document.body
