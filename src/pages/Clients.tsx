@@ -5,28 +5,35 @@ import {
   ArrowDown,
   ArrowUp,
   Calendar,
+  CalendarClock,
+  BadgeDollarSign,
   ChevronDown,
   ChevronRight,
   Clock,
+  Building2,
   FileSpreadsheet,
   FileText,
   Filter,
   Globe,
   Mail,
+  MapPin,
   MessageCircle,
   MoreVertical,
-  Package,
   Paperclip,
   Pencil,
   PhoneCall,
+  Phone,
   Plus,
+  Scale,
   Search,
   Smile,
   SlidersHorizontal,
   Star,
+  Truck,
   Trash2,
   User,
   Users,
+  CheckCircle2,
   X,
 } from "lucide-react";
 import { addDays, addHours, format, isAfter, isBefore, isSameDay, parseISO, setHours, setMinutes } from "date-fns";
@@ -52,7 +59,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -76,6 +82,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Collapsible,
   CollapsibleContent,
@@ -162,6 +169,8 @@ type ClientRecord = {
     declarationNumber?: string;
     recipientName?: string;
     recipientPhone?: string;
+    recipientCity?: string;
+    recipientOffice?: string;
     documents?: string[];
   }[];
 };
@@ -177,6 +186,8 @@ type DealFormState = {
   declarationNumber: string;
   recipientName: string;
   recipientPhone: string;
+  recipientCity: string;
+  recipientOffice: string;
   documents: string;
   comment: string;
   stage: DealStage;
@@ -882,12 +893,7 @@ const ClientsPage = () => {
               toast({ title: "Email скопирован", description: email });
             }}
           >
-            <img
-              src="/Проект (20260211052550).png"
-              alt="Почта"
-              className="h-4 w-4 object-contain"
-              loading="lazy"
-            />
+            <Mail className="h-4 w-4" />
           </button>
         ),
         size: 70,
@@ -1696,34 +1702,6 @@ const ContactsCell = ({
     );
   };
 
-const DealCarrierBadge = ({ declarationNumber }: { declarationNumber?: string }) => {
-  if (!declarationNumber) {
-    return <span className="text-xs text-slate-400">—</span>;
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.08)] transition hover:bg-slate-50"
-          aria-label={`Номер декларации: ${declarationNumber}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            navigator.clipboard?.writeText(declarationNumber);
-            toast({ title: "Номер декларации скопирован", description: declarationNumber });
-          }}
-        >
-          <Package className="h-4 w-4" />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="top" align="center" className="text-xs">
-        {declarationNumber}
-      </TooltipContent>
-    </Tooltip>
-  );
-};
-
 const CommentHoverTooltip = ({
   text,
   onClick,
@@ -2284,6 +2262,8 @@ const ClientDetailSheet = ({
     declarationNumber: "",
     recipientName: "",
     recipientPhone: "",
+    recipientCity: "",
+    recipientOffice: "",
     documents: "",
     comment: "",
     stage,
@@ -2326,6 +2306,7 @@ const ClientDetailSheet = ({
   const [commHistoryOpen, setCommHistoryOpen] = useState(true);
   const [commFormOpen, setCommFormOpen] = useState(false);
   const [activeContactId, setActiveContactId] = useState<string | null>(null);
+  const popoverBoundaryRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open || !client) return;
@@ -2545,6 +2526,8 @@ const ClientDetailSheet = ({
       declarationNumber: deal.declarationNumber ?? "",
       recipientName: deal.recipientName ?? "",
       recipientPhone: deal.recipientPhone ?? "",
+      recipientCity: deal.recipientCity ?? "",
+      recipientOffice: deal.recipientOffice ?? "",
       documents: (deal.documents ?? []).join(", "),
       comment: deal.comment ?? "",
       stage: stageOverride ?? deal.stage ?? "deal",
@@ -2584,6 +2567,8 @@ const ClientDetailSheet = ({
       declarationNumber: dealForm.declarationNumber.trim() || undefined,
       recipientName: dealForm.recipientName.trim() || undefined,
       recipientPhone: dealForm.recipientPhone.trim() || undefined,
+      recipientCity: dealForm.recipientCity.trim() || undefined,
+      recipientOffice: dealForm.recipientOffice.trim() || undefined,
       documents,
       comment: dealForm.comment.trim() || undefined,
     };
@@ -2970,6 +2955,252 @@ const ClientDetailSheet = ({
     [dealList]
   );
 
+  const DealCarrierCard = ({
+    declarationNumber,
+    recipientName,
+    recipientPhone,
+    recipientCity,
+    recipientOffice,
+    senderName,
+    originCity,
+    amount,
+    qty,
+    createdAt,
+  }: {
+    declarationNumber?: string;
+    recipientName?: string;
+    recipientPhone?: string;
+    recipientCity?: string;
+    recipientOffice?: string;
+    senderName?: string;
+    originCity?: string;
+    amount?: number;
+    qty?: number;
+    createdAt?: Date;
+  }) => (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.08)] transition hover:bg-slate-50"
+          aria-label="Данные получателя"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <img
+            src="/(20260211052550).png"
+            alt="Почтовый оператор"
+            className="h-4 w-4 object-contain"
+            loading="lazy"
+          />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="right"
+        align="start"
+        sideOffset={12}
+        alignOffset={-94}
+        container={popoverBoundaryRef.current ?? undefined}
+        collisionBoundary={popoverBoundaryRef.current ?? undefined}
+        collisionPadding={16}
+        sticky="always"
+        avoidCollisions
+        className="box-border !w-[314px] !min-w-[314px] !max-w-[314px] rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_18px_36px_rgba(15,23,42,0.16)]"
+        style={{ width: 314, minWidth: 314, maxWidth: 314 }}
+      >
+        {(() => {
+          const fallbackCity = recipientCity || "Киев";
+          const fallbackOffice = recipientOffice || "Отделение №3";
+          const fallbackSender = senderName || "—";
+          const routeLabel = originCity ? `${originCity} → ${fallbackCity}` : fallbackCity;
+          const weightValue =
+            typeof qty === "number" && Number.isFinite(qty)
+              ? `${Math.max(0.1, Math.round((qty / 1000) * 10) / 10)} кг`
+              : "1.2 кг";
+          const declaredValue =
+            typeof amount === "number" && Number.isFinite(amount) && amount > 0
+              ? `${formatAmount(amount)} грн`
+              : "12 500 грн";
+          const deliveryCost =
+            typeof amount === "number" && Number.isFinite(amount) && amount > 0
+              ? `${Math.max(30, Math.round(amount * 0.02))} грн`
+              : "120 грн";
+          const statusSteps = [
+            { key: "created", label: "Создана накладная", icon: FileText },
+            { key: "in_transit", label: "В пути", icon: Truck },
+            { key: "arrived", label: "Прибыло в отделение", icon: MapPin },
+            { key: "received", label: "Получено", icon: CheckCircle2 },
+          ];
+          const seedRaw = declarationNumber?.replace(/\D/g, "") || "1";
+          const seed = Number.parseInt(seedRaw.slice(-2), 10) || 1;
+          const statusIndex = Math.min(statusSteps.length - 1, seed % statusSteps.length);
+          const statusLabel = statusSteps[statusIndex]?.label ?? "В пути";
+          const progressValue =
+            statusSteps.length > 1 ? Math.round((statusIndex / (statusSteps.length - 1)) * 100) : 0;
+          const createdAtDate = toDate(createdAt ?? null) ?? new Date();
+          const etaDate = addDays(createdAtDate, 2);
+          const updatedAtDate = new Date();
+
+          return (
+            <div className="space-y-3">
+              <div className="flex h-20 items-center justify-center rounded-[12px] bg-emerald-100/60">
+              <div className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-white/70 shadow-[0_6px_14px_rgba(16,185,129,0.22)]">
+                <img
+                  src="/(20260211052550).png"
+                  alt="Новая почта"
+                  className="h-8 w-8 object-contain"
+                  loading="lazy"
+                />
+              </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+                    <Truck className="h-3 w-3" />
+                    {statusLabel}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
+                    <CalendarClock className="h-3 w-3" />
+                    {formatDateTime(updatedAtDate)}
+                  </span>
+                </div>
+                <div className="h-[6px] w-full rounded-full bg-slate-100">
+                  <div
+                    className="h-[6px] rounded-full bg-emerald-500 transition-all"
+                    style={{ width: `${progressValue}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-2 rounded-[12px] border border-slate-200/70 bg-slate-50/60 p-2 text-[11px]">
+                <div className="flex items-center gap-2 text-slate-600">
+                  <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                  <span className="font-semibold text-slate-700">{routeLabel}</span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-600">
+                  <Building2 className="h-3.5 w-3.5 text-slate-400" />
+                  <span>{fallbackOffice}</span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-600">
+                  <User className="h-3.5 w-3.5 text-slate-400" />
+                  <span>{fallbackSender}</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div>
+                  <div className="text-[11px] font-semibold text-slate-400">Получатель</div>
+                  <div className="text-[13px] font-semibold text-slate-900">{recipientName || "—"}</div>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                  <Phone className="h-3.5 w-3.5 text-slate-400" />
+                  {recipientPhone ? (
+                    <>
+                      <a
+                        href={`tel:${recipientPhone.replace(/[^\\d+]/g, "")}`}
+                        className="text-[13px] font-semibold text-slate-700"
+                      >
+                        {recipientPhone}
+                      </a>
+                      <button
+                        type="button"
+                        className="text-[10px] text-slate-400 hover:text-slate-600"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(recipientPhone);
+                          toast({ title: "Телефон скопирован", description: recipientPhone });
+                        }}
+                      >
+                        копировать
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-[12px] text-slate-400">—</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-[11px] text-slate-600">
+                <div className="rounded-[10px] border border-slate-200/70 bg-white p-2">
+                  <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                    <Scale className="h-3.5 w-3.5" />
+                    Вес
+                  </div>
+                  <div className="text-[13px] font-semibold text-slate-700">{weightValue}</div>
+                </div>
+                <div className="rounded-[10px] border border-slate-200/70 bg-white p-2">
+                  <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                    <BadgeDollarSign className="h-3.5 w-3.5" />
+                    Доставка
+                  </div>
+                  <div className="text-[13px] font-semibold text-slate-700">{deliveryCost}</div>
+                </div>
+                <div className="rounded-[10px] border border-slate-200/70 bg-white p-2">
+                  <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                    <BadgeDollarSign className="h-3.5 w-3.5" />
+                    Стоимость
+                  </div>
+                  <div className="text-[13px] font-semibold text-slate-700">{declaredValue}</div>
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded-[12px] border border-slate-200/70 bg-slate-50/70 p-2.5">
+                <div className="text-[11px] font-semibold text-slate-400">Таймлайн</div>
+                <div className="space-y-1">
+                  {statusSteps.map((step, idx) => {
+                    const StepIcon = step.icon;
+                    const isDone = idx <= statusIndex;
+                    return (
+                      <div key={step.key} className="flex items-start gap-2 text-[11px]">
+                        <div
+                          className={cn(
+                            "flex h-5 w-5 items-center justify-center rounded-full border",
+                            isDone ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-200 text-slate-400"
+                          )}
+                        >
+                          <StepIcon className="h-3 w-3" />
+                        </div>
+                        <div className="flex-1">
+                          <div className={cn("text-[12px] font-semibold", isDone ? "text-slate-800" : "text-slate-400")}>
+                            {step.label}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            {formatDate(idx === 0 ? createdAtDate : addDays(createdAtDate, idx))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold text-slate-400">№ декларации</div>
+                {declarationNumber ? (
+                  <button
+                    type="button"
+                    className="text-left text-[13px] font-semibold text-slate-700 hover:text-slate-900"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(declarationNumber);
+                      toast({ title: "Номер декларации скопирован", description: declarationNumber });
+                    }}
+                  >
+                    {declarationNumber}
+                  </button>
+                ) : (
+                  <div className="text-[12px] text-slate-400">—</div>
+                )}
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span>Отправка: {formatDate(createdAtDate)}</span>
+                <span>Доставка: {formatDate(etaDate)}</span>
+              </div>
+            </div>
+          );
+        })()}
+      </PopoverContent>
+    </Popover>
+  );
+
   const DealRowMenu = ({
     deal,
     context,
@@ -3025,6 +3256,7 @@ const ClientDetailSheet = ({
       }}
     >
       <DialogContent
+        ref={popoverBoundaryRef}
         className="client-details-modal modal-surface flex max-h-[92vh] w-[min(98vw,1800px)] max-w-none flex-col overflow-hidden rounded-[20px] border border-slate-200/60 bg-slate-50 p-6 !translate-x-[-50%] !translate-y-[-50%] data-[state=open]:animate-none data-[state=closed]:animate-none"
         onPointerDownCapture={onPointerDownCapture}
         onPointerDownOutside={onPointerDownCapture}
@@ -3283,24 +3515,20 @@ const ClientDetailSheet = ({
                                     <td className="px-3 py-2 text-sm">{formatAmount(deal.qty)}</td>
                                     <td className="px-3 py-2 text-sm">{formatAmount(deal.price)}</td>
                                     <td className="px-3 py-2 text-xs text-muted-foreground">
-                                      <div className="flex items-start gap-2">
-                                        <DealCarrierBadge declarationNumber={deal.declarationNumber} />
-                                        {(deal.recipientName || deal.recipientPhone) && (
-                                          <div className="space-y-0.5 text-[11px] text-slate-400">
-                                            {deal.recipientName && (
-                                              <div className="truncate">{deal.recipientName}</div>
-                                            )}
-                                            {deal.recipientPhone && (
-                                              <a
-                                                href={`tel:${deal.recipientPhone.replace(/[^\\d+]/g, "")}`}
-                                                className="text-sky-600 hover:underline"
-                                              >
-                                                {deal.recipientPhone}
-                                              </a>
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
+                                    <div className="flex items-start gap-2">
+                                      <DealCarrierCard
+                                        declarationNumber={deal.declarationNumber}
+                                        recipientName={deal.recipientName}
+                                        recipientPhone={deal.recipientPhone}
+                                        recipientCity={deal.recipientCity}
+                                        recipientOffice={deal.recipientOffice}
+                                        senderName={draft.company || draft.name}
+                                        originCity={draft.city}
+                                        amount={deal.amount}
+                                        qty={deal.qty}
+                                        createdAt={deal.createdAt}
+                                      />
+                                    </div>
                                     </td>
                                     <td className="px-3 py-2 text-sm">{deal.comment || "—"}</td>
                                     <td className="px-3 py-2 text-right">
@@ -3425,6 +3653,22 @@ const ClientDetailSheet = ({
                               setDealForm((prev) => ({ ...prev, recipientPhone: event.target.value }))
                             }
                           />
+                          <Input
+                            className="h-9"
+                            placeholder="Город получателя"
+                            value={dealForm.recipientCity}
+                            onChange={(event) =>
+                              setDealForm((prev) => ({ ...prev, recipientCity: event.target.value }))
+                            }
+                          />
+                          <Input
+                            className="h-9"
+                            placeholder="Отделение"
+                            value={dealForm.recipientOffice}
+                            onChange={(event) =>
+                              setDealForm((prev) => ({ ...prev, recipientOffice: event.target.value }))
+                            }
+                          />
                           <div className="space-y-2">
                             <Input
                               className="h-9"
@@ -3533,20 +3777,18 @@ const ClientDetailSheet = ({
                                   <td className="px-3 py-2 text-sm">{formatAmount(deal.price)}</td>
                                   <td className="px-3 py-2 text-xs text-muted-foreground">
                                     <div className="flex items-start gap-2">
-                                      <DealCarrierBadge declarationNumber={deal.declarationNumber} />
-                                      {(deal.recipientName || deal.recipientPhone) && (
-                                        <div className="space-y-0.5 text-[11px] text-slate-400">
-                                          {deal.recipientName && <div className="truncate">{deal.recipientName}</div>}
-                                          {deal.recipientPhone && (
-                                            <a
-                                              href={`tel:${deal.recipientPhone.replace(/[^\\d+]/g, "")}`}
-                                              className="text-sky-600 hover:underline"
-                                            >
-                                              {deal.recipientPhone}
-                                            </a>
-                                          )}
-                                        </div>
-                                      )}
+                                      <DealCarrierCard
+                                        declarationNumber={deal.declarationNumber}
+                                        recipientName={deal.recipientName}
+                                        recipientPhone={deal.recipientPhone}
+                                        recipientCity={deal.recipientCity}
+                                        recipientOffice={deal.recipientOffice}
+                                        senderName={draft.company || draft.name}
+                                        originCity={draft.city}
+                                        amount={deal.amount}
+                                        qty={deal.qty}
+                                        createdAt={deal.createdAt}
+                                      />
                                     </div>
                                   </td>
                                   <td className="px-3 py-2 text-sm">{deal.comment || "—"}</td>

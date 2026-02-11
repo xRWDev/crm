@@ -43,6 +43,8 @@ export interface ClientDeal {
   declarationNumber?: string;
   recipientName?: string;
   recipientPhone?: string;
+  recipientCity?: string;
+  recipientOffice?: string;
   comment?: string;
   documents?: string[];
 }
