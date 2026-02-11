@@ -24,6 +24,7 @@ import {
   PhoneCall,
   Phone,
   Plus,
+  Copy,
   Scale,
   Search,
   Smile,
@@ -3104,13 +3105,14 @@ const ClientDetailSheet = ({
                       </a>
                       <button
                         type="button"
-                        className="text-[10px] text-slate-400 hover:text-slate-600"
+                        aria-label="Скопировать телефон"
+                        className="inline-flex h-5 w-5 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                         onClick={() => {
                           navigator.clipboard?.writeText(recipientPhone);
                           toast({ title: "Телефон скопирован", description: recipientPhone });
                         }}
                       >
-                        копировать
+                        <Copy className="h-3.5 w-3.5" />
                       </button>
                     </>
                   ) : (
@@ -3176,16 +3178,20 @@ const ClientDetailSheet = ({
               <div className="space-y-1">
                 <div className="text-[11px] font-semibold text-slate-400">№ декларации</div>
                 {declarationNumber ? (
-                  <button
-                    type="button"
-                    className="text-left text-[13px] font-semibold text-slate-700 hover:text-slate-900"
-                    onClick={() => {
-                      navigator.clipboard?.writeText(declarationNumber);
-                      toast({ title: "Номер декларации скопирован", description: declarationNumber });
-                    }}
-                  >
-                    {declarationNumber}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <div className="text-[13px] font-semibold text-slate-700">{declarationNumber}</div>
+                    <button
+                      type="button"
+                      aria-label="Скопировать номер декларации"
+                      className="inline-flex h-5 w-5 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(declarationNumber);
+                        toast({ title: "Номер декларации скопирован", description: declarationNumber });
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 ) : (
                   <div className="text-[12px] text-slate-400">—</div>
                 )}
