@@ -21,6 +21,7 @@ export interface ClientComment {
 
 export interface ClientCommunication {
   id: string;
+  kind?: 'call' | 'meeting';
   scheduledAt: Date;
   note?: string;
   status: 'planned' | 'closed';
@@ -32,6 +33,7 @@ export interface ClientCommunication {
 
 export interface ClientDeal {
   id: string;
+  stage?: 'quote' | 'deal';
   createdAt: Date;
   title: string;
   unit: string;

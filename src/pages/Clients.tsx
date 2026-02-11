@@ -15,6 +15,7 @@ import {
   Mail,
   MessageCircle,
   MoreVertical,
+  Package,
   Paperclip,
   Pencil,
   PhoneCall,
@@ -51,6 +52,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -92,6 +94,8 @@ const COMMUNICATION_STATUS = ["none", "refused", "in_progress", "success"] as co
 type CommunicationStatus = (typeof COMMUNICATION_STATUS)[number];
 
 type CommunicationResult = "success" | "failed";
+type CommunicationFormStatus = "planned" | CommunicationResult;
+type DealStage = "quote" | "deal";
 
 const COMMUNICATION_FAIL_REASONS = [
   { value: "supplier", label: "Есть свой поставщик" },
@@ -136,6 +140,7 @@ type ClientRecord = {
   allowManagerDeleteComments?: boolean;
   communications?: {
     id: string;
+    kind?: "call" | "meeting";
     scheduledAt: Date;
     note?: string;
     status: "planned" | "closed";
@@ -146,6 +151,7 @@ type ClientRecord = {
   }[];
   deals?: {
     id: string;
+    stage?: DealStage;
     createdAt: Date;
     title: string;
     unit: string;
@@ -173,6 +179,7 @@ type DealFormState = {
   recipientPhone: string;
   documents: string;
   comment: string;
+  stage: DealStage;
 };
 
 type ClientFilterKey =
@@ -1684,6 +1691,30 @@ const ContactsCell = ({
     );
   };
 
+const DealCarrierBadge = ({ declarationNumber }: { declarationNumber?: string }) => {
+  if (!declarationNumber) {
+    return <span className="text-xs text-slate-400">—</span>;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.08)] transition hover:bg-slate-50"
+          aria-label={`Номер декларации: ${declarationNumber}`}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Package className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" className="text-xs">
+        {declarationNumber}
+      </TooltipContent>
+    </Tooltip>
+  );
+};
+
 const CommentHoverTooltip = ({
   text,
   onClick,
@@ -2234,7 +2265,7 @@ const ClientDetailSheet = ({
   currentUserName: string;
   isDirector: boolean;
 }) => {
-  const buildEmptyDealForm = (): DealFormState => ({
+  const buildEmptyDealForm = (stage: DealStage = "deal"): DealFormState => ({
     createdAt: format(new Date(), "yyyy-MM-dd"),
     title: "",
     unit: "",
@@ -2246,6 +2277,7 @@ const ClientDetailSheet = ({
     recipientPhone: "",
     documents: "",
     comment: "",
+    stage,
   });
   const activeClient = client ?? ({} as ClientRecord);
 
@@ -2269,6 +2301,10 @@ const ClientDetailSheet = ({
     const next = toDate(activeClient.nextCommunicationAt ?? null);
     return next ? format(next, "HH:mm") : "09:00";
   });
+  const [commType, setCommType] = useState<"call" | "meeting">("call");
+  const [commStatus, setCommStatus] = useState<CommunicationFormStatus>("planned");
+  const [commFailReason, setCommFailReason] = useState("");
+  const [commFollowUpEnabled, setCommFollowUpEnabled] = useState(false);
   const [closingCommId, setClosingCommId] = useState<string | null>(null);
   const [closingResult, setClosingResult] = useState<CommunicationResult | null>(null);
   const [closingReason, setClosingReason] = useState("");
@@ -2276,7 +2312,7 @@ const ClientDetailSheet = ({
   const [dealList, setDealList] = useState(activeClient.deals ?? []);
   const [dealFormOpen, setDealFormOpen] = useState(false);
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
-  const [dealForm, setDealForm] = useState<DealFormState>(() => buildEmptyDealForm());
+  const [dealForm, setDealForm] = useState<DealFormState>(() => buildEmptyDealForm("deal"));
   const dealFileInputRef = useRef<HTMLInputElement | null>(null);
   const [commHistoryOpen, setCommHistoryOpen] = useState(true);
   const [commFormOpen, setCommFormOpen] = useState(false);
@@ -2297,12 +2333,16 @@ const ClientDetailSheet = ({
     const next = toDate(client.nextCommunicationAt ?? null);
     setCommDate(next ? format(next, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"));
     setCommTime(next ? format(next, "HH:mm") : "09:00");
+    setCommType("call");
+    setCommStatus("planned");
+    setCommFailReason("");
+    setCommFollowUpEnabled(false);
     setClosingCommId(null);
     setClosingResult(null);
     setClosingReason("");
     setReminderAt(client.reminderAt ?? null);
     setDealList(client.deals ?? []);
-    setDealForm(buildEmptyDealForm());
+    setDealForm(buildEmptyDealForm((initialTab ?? "deals") === "quotes" ? "quote" : "deal"));
     setDealFormOpen(false);
     setEditingDealId(null);
     setCommHistoryOpen(true);
@@ -2478,7 +2518,11 @@ const ClientDetailSheet = ({
     updateClient(client.id, { deals: nextDeals });
   };
 
-  const handleEditDeal = (deal: NonNullable<ClientRecord["deals"]>[number]) => {
+  const handleEditDeal = (
+    deal: NonNullable<ClientRecord["deals"]>[number],
+    stageOverride?: DealStage
+  ) => {
+    setActiveTab("deals");
     setDealFormOpen(true);
     setEditingDealId(deal.id);
     setDealForm({
@@ -2494,11 +2538,18 @@ const ClientDetailSheet = ({
       recipientPhone: deal.recipientPhone ?? "",
       documents: (deal.documents ?? []).join(", "),
       comment: deal.comment ?? "",
+      stage: stageOverride ?? deal.stage ?? "deal",
     });
   };
 
   const handleDeleteDeal = (id: string) => {
     persistDeals(dealList.filter((deal) => deal.id !== id));
+  };
+
+  const handleMoveDealStage = (id: string, stage: DealStage) => {
+    const nextDeals = dealList.map((deal) => (deal.id === id ? { ...deal, stage } : deal));
+    persistDeals(nextDeals);
+    setActiveTab(stage === "deal" ? "deals" : "quotes");
   };
 
   const handleSaveDeal = () => {
@@ -2514,6 +2565,7 @@ const ClientDetailSheet = ({
 
     const nextDeal = {
       id: editingDealId ?? `deal-${Date.now()}`,
+      stage: dealForm.stage ?? "deal",
       createdAt,
       title: dealForm.title.trim(),
       unit: dealForm.unit.trim() || "шт.",
@@ -2532,13 +2584,13 @@ const ClientDetailSheet = ({
       : [nextDeal, ...dealList];
 
     persistDeals(nextDeals);
-    setDealForm(buildEmptyDealForm());
+    setDealForm(buildEmptyDealForm(activeTab === "quotes" ? "quote" : "deal"));
     setDealFormOpen(false);
     setEditingDealId(null);
   };
 
   const handleCancelDealForm = () => {
-    setDealForm(buildEmptyDealForm());
+    setDealForm(buildEmptyDealForm(activeTab === "quotes" ? "quote" : "deal"));
     setDealFormOpen(false);
     setEditingDealId(null);
   };
@@ -2627,25 +2679,74 @@ const ClientDetailSheet = ({
     }));
   };
 
-  const handleScheduleCommunication = () => {
-    if (!commDate) return;
-    const scheduledAt = new Date(`${commDate}T${commTime || "09:00"}`);
-    const nextItem = {
+  const handleSaveCommunication = () => {
+    const noteValue = commNote.trim();
+    const now = new Date();
+    const scheduleTime = commDate ? new Date(`${commDate}T${commTime || "09:00"}`) : null;
+    const nextItems: NonNullable<ClientRecord["communications"]> = [];
+
+    if (commStatus === "planned") {
+      if (!scheduleTime) {
+        toast({ title: "Выберите дату", description: "Укажите дату и время коммуникации." });
+        return;
+      }
+      nextItems.push({
+        id: `comm-${Date.now()}`,
+        kind: commType,
+        scheduledAt: scheduleTime,
+        note: noteValue || undefined,
+        status: "planned",
+        createdAt: now,
+      });
+      persistCommunications([...nextItems, ...communications], noteValue);
+      toast({ title: "Коммуникация запланирована", description: formatDateTime(scheduleTime) });
+      return;
+    }
+
+    if (commStatus === "failed" && !commFailReason) {
+      toast({ title: "Укажите причину", description: "Выберите причину отказа." });
+      return;
+    }
+
+    nextItems.push({
       id: `comm-${Date.now()}`,
-      scheduledAt,
-      note: commNote.trim() || undefined,
-      status: "planned" as const,
-      createdAt: new Date(),
-    };
-    const nextList = [nextItem, ...communications];
-    persistCommunications(nextList, commNote.trim());
-    toast({ title: "Коммуникация запланирована", description: formatDateTime(scheduledAt) });
+      kind: commType,
+      scheduledAt: now,
+      note: noteValue || undefined,
+      status: "closed",
+      result: commStatus === "success" ? "success" : "failed",
+      reason: commStatus === "failed" ? commFailReason : undefined,
+      createdAt: now,
+      closedAt: now,
+    });
+
+    if (commFollowUpEnabled) {
+      if (!scheduleTime) {
+        toast({ title: "Выберите дату", description: "Укажите дату и время повторного контакта." });
+        return;
+      }
+      nextItems.unshift({
+        id: `comm-${Date.now()}-next`,
+        kind: commType,
+        scheduledAt: scheduleTime,
+        note: undefined,
+        status: "planned",
+        createdAt: now,
+      });
+    }
+
+    persistCommunications([...nextItems, ...communications], noteValue);
+    toast({ title: "Коммуникация сохранена", description: commStatus === "success" ? "Завершено удачно" : "Завершено неудачно" });
   };
 
   const handleClearCommunicationForm = () => {
     setCommNote("");
     setCommDate(format(new Date(), "yyyy-MM-dd"));
     setCommTime("09:00");
+    setCommType("call");
+    setCommStatus("planned");
+    setCommFailReason("");
+    setCommFollowUpEnabled(false);
   };
 
   const handleStartCloseCommunication = (id: string) => {
@@ -2795,6 +2896,19 @@ const ClientDetailSheet = ({
   const nextCommunicationDate = toDate(
     nextPlannedCommunication?.scheduledAt ?? draft.nextCommunicationAt ?? null
   );
+  const nextCommunicationKind = nextPlannedCommunication?.kind;
+  const nextCommunicationKindLabel =
+    nextCommunicationKind === "meeting"
+      ? "Встреча"
+      : nextCommunicationKind === "call"
+      ? "Звонок"
+      : "Коммуникация";
+  const nextCommunicationQuestionsLabel =
+    nextCommunicationKind === "call"
+      ? "Вопросы к звонку"
+      : nextCommunicationKind === "meeting"
+      ? "Вопросы к встрече"
+      : "Вопросы к коммуникации";
   const nextCommunicationRelativeLabel = nextCommunicationDate
     ? isSameDay(nextCommunicationDate, new Date())
       ? "сегодня"
@@ -2803,7 +2917,7 @@ const ClientDetailSheet = ({
       : format(nextCommunicationDate, "dd.MM.yyyy")
     : "";
   const nextCommunicationPill = nextCommunicationDate
-    ? `Встреча ${nextCommunicationRelativeLabel} с ${formatShortClockTime(nextCommunicationDate)} до ${formatShortClockTime(addHours(nextCommunicationDate, 2))}`
+    ? `${nextCommunicationKindLabel} ${nextCommunicationRelativeLabel} с ${formatShortClockTime(nextCommunicationDate)} до ${formatShortClockTime(addHours(nextCommunicationDate, 2))}`
     : "Коммуникация не запланирована";
 
   const chatTimeline = useMemo(() => {
@@ -2837,6 +2951,59 @@ const ClientDetailSheet = ({
     const total = docsFlat.length;
     return { contracts, invoices, quotes, total };
   }, [docsFlat]);
+
+  const quotesList = useMemo(
+    () => dealList.filter((deal) => !deal.stage || deal.stage === "quote"),
+    [dealList]
+  );
+  const dealsList = useMemo(
+    () => dealList.filter((deal) => !deal.stage || deal.stage === "deal"),
+    [dealList]
+  );
+
+  const DealRowMenu = ({
+    deal,
+    context,
+  }: {
+    deal: NonNullable<ClientRecord["deals"]>[number];
+    context: DealStage;
+  }) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100"
+          aria-label="Действия"
+        >
+          <MoreVertical className="h-4 w-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-44">
+        <DropdownMenuItem
+          disabled={!isEditing}
+          onClick={() => handleEditDeal(deal, context)}
+        >
+          Редактировать
+        </DropdownMenuItem>
+        {context === "quote" && (
+          <DropdownMenuItem
+            disabled={!isEditing}
+            onClick={() => handleMoveDealStage(deal.id, "deal")}
+          >
+            Перенести в сделку
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          disabled={!isEditing}
+          onClick={() => handleDeleteDeal(deal.id)}
+          className="text-rose-600 focus:text-rose-600"
+        >
+          Удалить
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   if (!client) return null;
 
@@ -3029,7 +3196,7 @@ const ClientDetailSheet = ({
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate">Просчеты</span>
                       <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-[2px] bg-slate-900 px-2 text-[11px] font-semibold leading-none text-white">
-                        {dealList.length}
+                        {quotesList.length}
                       </span>
                     </span>
                     <ChevronRight className="h-4 w-4 text-slate-400" />
@@ -3041,7 +3208,7 @@ const ClientDetailSheet = ({
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate">Сделки</span>
                       <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-[2px] bg-slate-900 px-2 text-[11px] font-semibold leading-none text-white">
-                        {dealList.length}
+                        {dealsList.length}
                       </span>
                     </span>
                     <ChevronRight className="h-4 w-4 text-slate-400" />
@@ -3068,8 +3235,8 @@ const ClientDetailSheet = ({
                             </tr>
                           </thead>
                           <tbody>
-                            {dealList.length ? (
-                              dealList.map((deal, index) => {
+                            {quotesList.length ? (
+                              quotesList.map((deal, index) => {
                                 const variant = index % 3;
                                 const statusLabel =
                                   variant === 0 ? "Проектно" : variant === 1 ? "Новый" : "Отказ";
@@ -3083,15 +3250,7 @@ const ClientDetailSheet = ({
                                 return (
                                   <tr key={deal.id} className="border-b border-slate-200/60 last:border-b-0">
                                     <td className="px-3 py-2">
-                                      <button
-                                        type="button"
-                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-rose-500 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-slate-400"
-                                        disabled={!isEditing}
-                                        onClick={() => handleDeleteDeal(deal.id)}
-                                        aria-label="Удалить"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
+                                      <DealRowMenu deal={deal} context="quote" />
                                     </td>
                                     <td className="px-3 py-2">
                                       <span
@@ -3115,10 +3274,8 @@ const ClientDetailSheet = ({
                                     <td className="px-3 py-2 text-sm">{formatAmount(deal.qty)}</td>
                                     <td className="px-3 py-2 text-sm">{formatAmount(deal.price)}</td>
                                     <td className="px-3 py-2 text-xs text-muted-foreground">
-                                      <div className="space-y-1">
-                                        <div className="font-medium text-slate-700">
-                                          {deal.declarationNumber || "—"}
-                                        </div>
+                                      <div className="flex items-start gap-2">
+                                        <DealCarrierBadge declarationNumber={deal.declarationNumber} />
                                         {(deal.recipientName || deal.recipientPhone) && (
                                           <div className="space-y-0.5 text-[11px] text-slate-400">
                                             {deal.recipientName && (
@@ -3173,7 +3330,7 @@ const ClientDetailSheet = ({
                               const next = !prev;
                               if (next) {
                                 setEditingDealId(null);
-                                setDealForm(buildEmptyDealForm());
+                                setDealForm(buildEmptyDealForm("deal"));
                               }
                               return next;
                             })
@@ -3327,8 +3484,8 @@ const ClientDetailSheet = ({
                           </tr>
                         </thead>
                         <tbody>
-                          {dealList.length ? (
-                            dealList.map((deal, index) => {
+                          {dealsList.length ? (
+                            dealsList.map((deal, index) => {
                               const variant = index % 3;
                               const statusLabel =
                                 variant === 0 ? "Проектно" : variant === 1 ? "Новый" : "Отказ";
@@ -3340,18 +3497,10 @@ const ClientDetailSheet = ({
                                   : "bg-rose-500";
 
                               return (
-                                <tr key={deal.id} className="border-b border-slate-200/60 last:border-b-0">
-                                  <td className="px-3 py-2">
-                                    <button
-                                      type="button"
-                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-rose-500 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-slate-400"
-                                      disabled={!isEditing}
-                                      onClick={() => handleDeleteDeal(deal.id)}
-                                      aria-label="Удалить"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </button>
-                                  </td>
+                                  <tr key={deal.id} className="border-b border-slate-200/60 last:border-b-0">
+                                    <td className="px-3 py-2">
+                                      <DealRowMenu deal={deal} context="deal" />
+                                    </td>
                                   <td className="px-3 py-2">
                                     <span
                                       className={cn(
@@ -3374,10 +3523,8 @@ const ClientDetailSheet = ({
                                   <td className="px-3 py-2 text-sm">{formatAmount(deal.qty)}</td>
                                   <td className="px-3 py-2 text-sm">{formatAmount(deal.price)}</td>
                                   <td className="px-3 py-2 text-xs text-muted-foreground">
-                                    <div className="space-y-1">
-                                      <div className="font-medium text-slate-700">
-                                        {deal.declarationNumber || "—"}
-                                      </div>
+                                    <div className="flex items-start gap-2">
+                                      <DealCarrierBadge declarationNumber={deal.declarationNumber} />
                                       {(deal.recipientName || deal.recipientPhone) && (
                                         <div className="space-y-0.5 text-[11px] text-slate-400">
                                           {deal.recipientName && <div className="truncate">{deal.recipientName}</div>}
@@ -3600,28 +3747,117 @@ const ClientDetailSheet = ({
                   {commFormOpen ? (
                     <div className="space-y-3">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <Input
-                        type="date"
-                        className="h-9"
-                        value={commDate}
-                        onChange={(event) => setCommDate(event.target.value)}
-                      />
-                      <Input
-                        type="time"
-                        className="h-9"
-                        value={commTime}
-                        onChange={(event) => setCommTime(event.target.value)}
-                      />
+                      <Select
+                        value={commType}
+                        onValueChange={(value) => setCommType(value as "call" | "meeting")}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Тип коммуникации" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="call">Звонок</SelectItem>
+                          <SelectItem value="meeting">Встреча</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={commStatus}
+                        onValueChange={(value) => {
+                          const nextStatus = value as CommunicationFormStatus;
+                          setCommStatus(nextStatus);
+                          if (nextStatus === "planned") {
+                            setCommFollowUpEnabled(false);
+                          }
+                          if (nextStatus !== "failed") {
+                            setCommFailReason("");
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Статус" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="planned">Запланирована</SelectItem>
+                          <SelectItem value="success">Завершено удачно</SelectItem>
+                          <SelectItem value="failed">Завершено неудачно</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
+
+                    {commStatus === "planned" && (
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <Input
+                          type="date"
+                          className="h-9"
+                          value={commDate}
+                          onChange={(event) => setCommDate(event.target.value)}
+                        />
+                        <Input
+                          type="time"
+                          className="h-9"
+                          value={commTime}
+                          onChange={(event) => setCommTime(event.target.value)}
+                        />
+                      </div>
+                    )}
+
                     <Input
                       className="h-9"
                       placeholder="Короткая заметка для коммуникации"
                       value={commNote}
                       onChange={(event) => setCommNote(event.target.value)}
                     />
+
+                    {commStatus === "failed" && (
+                      <div className="rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs">
+                        <div className="mb-2 font-semibold text-slate-500">Причина</div>
+                        <div className="space-y-1">
+                          {COMMUNICATION_FAIL_REASONS.map((reason) => (
+                            <label key={reason.value} className="flex items-center gap-2 text-xs text-slate-600">
+                              <input
+                                type="radio"
+                                name="comm-fail-reason"
+                                checked={commFailReason === reason.value}
+                                onChange={() => setCommFailReason(reason.value)}
+                              />
+                              {reason.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {commStatus !== "planned" && (
+                      <div className="rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs">
+                        <label className="flex items-center gap-2 text-xs text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={commFollowUpEnabled}
+                            onChange={(event) => setCommFollowUpEnabled(event.target.checked)}
+                          />
+                          Назначить повторный контакт
+                        </label>
+                        {commFollowUpEnabled && (
+                          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <Input
+                              type="date"
+                              className="h-9"
+                              value={commDate}
+                              onChange={(event) => setCommDate(event.target.value)}
+                            />
+                            <Input
+                              type="time"
+                              className="h-9"
+                              value={commTime}
+                              onChange={(event) => setCommTime(event.target.value)}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap gap-2">
-                      <Button size="sm" onClick={handleScheduleCommunication}>
-                        Запланировать
+                      <Button size="sm" onClick={handleSaveCommunication}>
+                        {commStatus === "planned" ? "Запланировать" : "Сохранить"}
                       </Button>
                       <Button size="sm" variant="ghost" onClick={handleClearCommunicationForm}>
                         Очистить
@@ -3672,9 +3908,18 @@ const ClientDetailSheet = ({
                               return (
                                 <div key={item.id} className="rounded-[10px] bg-slate-50 px-3 py-2 text-xs">
                                   <div className="flex items-center justify-between gap-2">
-                                    <span className="font-semibold text-foreground">
-                                      {formatDateTime(item.scheduledAt)}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-semibold text-foreground">
+                                        {formatDateTime(item.scheduledAt)}
+                                      </span>
+                                      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                        {item.kind === "meeting"
+                                          ? "Встреча"
+                                          : item.kind === "call"
+                                          ? "Звонок"
+                                          : "Коммуникация"}
+                                      </span>
+                                    </div>
                                     <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", badgeClass)}>
                                       {badgeLabel}
                                     </span>
@@ -3754,7 +3999,9 @@ const ClientDetailSheet = ({
 
                       {nextCommunicationDate && (
                         <div className="space-y-2">
-                          <div className="text-[11px] font-semibold text-slate-400">Вопросы к встрече</div>
+                          <div className="text-[11px] font-semibold text-slate-400">
+                            {nextCommunicationQuestionsLabel}
+                          </div>
                           {meetingTodoItems.length ? (
                             <div className="divide-y divide-slate-200/60">
                               {meetingTodoItems.map((text, index) => (
