@@ -882,7 +882,12 @@ const ClientsPage = () => {
               toast({ title: "Email скопирован", description: email });
             }}
           >
-            <Mail className="h-4 w-4" />
+            <img
+              src="/Проект (20260211052550).png"
+              alt="Почта"
+              className="h-4 w-4 object-contain"
+              loading="lazy"
+            />
           </button>
         ),
         size: 70,
@@ -1703,7 +1708,11 @@ const DealCarrierBadge = ({ declarationNumber }: { declarationNumber?: string })
           type="button"
           className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.08)] transition hover:bg-slate-50"
           aria-label={`Номер декларации: ${declarationNumber}`}
-          onClick={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            navigator.clipboard?.writeText(declarationNumber);
+            toast({ title: "Номер декларации скопирован", description: declarationNumber });
+          }}
         >
           <Package className="h-4 w-4" />
         </button>
