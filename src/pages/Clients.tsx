@@ -3491,7 +3491,7 @@ const ClientDetailSheet = ({
         onPointerDownOutside={onPointerDownCapture}
       >
         <div className="relative flex min-h-0 flex-col gap-6">
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200/60 pb-4">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200/60 pb-4 pr-14">
             <div className="flex items-start gap-3">
               <div className="h-10 w-10 rounded-[10px] border border-slate-200/60 bg-white/70" />
               <div className="space-y-2">
@@ -3643,7 +3643,12 @@ const ClientDetailSheet = ({
                   </Button>
                 </>
               ) : (
-                <Button size="sm" variant="secondary" onClick={() => setIsEditing(true)}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="bg-[#e8eef3] text-slate-700 hover:bg-[#d9e3ea] shadow-[0_8px_18px_rgba(15,23,42,0.12)] hover:shadow-[0_12px_22px_rgba(15,23,42,0.16)] active:shadow-[0_6px_12px_rgba(15,23,42,0.14)] transition-shadow"
+                  onClick={() => setIsEditing(true)}
+                >
                   <Pencil className="h-4 w-4" />
                   Редактировать
                 </Button>
