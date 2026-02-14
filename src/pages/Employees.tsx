@@ -68,6 +68,24 @@ const getDisplayName = (employee: Employee) => {
 };
 
 const defaultEfficiency = { communications: undefined, orders: undefined, tasks: undefined };
+const defaultReportAccess = {
+  analytics: {
+    tasks: true,
+    clients: true,
+    sales: true,
+    deals: true,
+    efficiency: true,
+    comparison: true,
+  },
+};
+const analyticsAccessOptions = [
+  { key: 'tasks', label: 'Отчеты по задачам' },
+  { key: 'clients', label: 'Клиенты и коммуникации' },
+  { key: 'sales', label: 'Отчеты по продажам' },
+  { key: 'deals', label: 'Отчеты по делам' },
+  { key: 'efficiency', label: 'Коэффициент эффективности' },
+  { key: 'comparison', label: 'Сравнение менеджеров' },
+] as const;
 
 export default function Employees() {
   const {
@@ -126,6 +144,7 @@ export default function Employees() {
     salary: {} as Employee['salary'],
     efficiencyTargets: { ...defaultEfficiency } as Employee['efficiencyTargets'],
     efficiencyActual: { ...defaultEfficiency } as Employee['efficiencyActual'],
+    reportAccess: { ...defaultReportAccess },
   });
 
   const [fireForm, setFireForm] = useState({
@@ -174,6 +193,7 @@ export default function Employees() {
       salary: selectedEmployee.salary || {},
       efficiencyTargets: selectedEmployee.efficiencyTargets || { ...defaultEfficiency },
       efficiencyActual: selectedEmployee.efficiencyActual || { ...defaultEfficiency },
+      reportAccess: selectedEmployee.reportAccess || { ...defaultReportAccess },
     });
     setActivityFilter('week');
     setActivityRange({ from: '', to: '' });
@@ -366,6 +386,7 @@ export default function Employees() {
       salary: {},
       efficiencyTargets: { ...defaultEfficiency },
       efficiencyActual: { ...defaultEfficiency },
+      reportAccess: { ...defaultReportAccess },
     });
 
     setIsAddOpen(false);
@@ -419,6 +440,7 @@ export default function Employees() {
       salary: detailDraft.salary,
       efficiencyTargets: detailDraft.efficiencyTargets,
       efficiencyActual: detailDraft.efficiencyActual,
+      reportAccess: detailDraft.reportAccess,
     });
     setIsDetailOpen(false);
   };
@@ -1189,6 +1211,39 @@ export default function Employees() {
                 })}
               </div>
             </div>
+
+            {(selectedEmployee.role === 'manager' || selectedEmployee.role === 'admin') && (
+              <div className="glass-card p-4 space-y-3">
+                <h4 className="text-sm font-semibold text-foreground">Доступ к отчетам (аналитика)</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {analyticsAccessOptions.map((option) => (
+                    <label key={option.key} className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={detailDraft.reportAccess?.analytics?.[option.key] ?? true}
+                        onChange={(event) =>
+                          setDetailDraft((prev) => ({
+                            ...prev,
+                            reportAccess: {
+                              ...prev.reportAccess,
+                              analytics: {
+                                ...prev.reportAccess?.analytics,
+                                [option.key]: event.target.checked,
+                              },
+                            },
+                          }))
+                        }
+                      />
+                      <span className="text-foreground">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Эти настройки ограничивают видимость блоков в разделе отчетов для выбранного менеджера.
+                </p>
+              </div>
+            )}
 
             <div className="sticky bottom-0 z-10 -mx-6 -mb-4 mt-2 bg-[hsl(var(--border-solid))] px-6 py-2">
               <div className="flex flex-wrap items-center justify-between gap-3">

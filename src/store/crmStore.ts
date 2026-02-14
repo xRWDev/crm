@@ -17,6 +17,17 @@ export interface ClientComment {
   authorId?: string;
   authorName?: string;
   updatedAt?: Date;
+  attachments?: {
+    id: string;
+    name: string;
+    size: number;
+    type?: string;
+  }[];
+  replyTo?: {
+    id: string;
+    authorName?: string;
+    text?: string;
+  };
 }
 
 export interface ClientCommunication {
@@ -194,6 +205,16 @@ export interface Employee {
   salary?: Record<string, { salary?: number; bonus?: number; penalty?: number }>;
   efficiencyTargets?: { communications?: number; orders?: number; tasks?: number };
   efficiencyActual?: { communications?: number; orders?: number; tasks?: number };
+  reportAccess?: {
+    analytics?: {
+      tasks?: boolean;
+      clients?: boolean;
+      sales?: boolean;
+      deals?: boolean;
+      efficiency?: boolean;
+      comparison?: boolean;
+    };
+  };
   terminationComment?: string;
 }
 
@@ -375,7 +396,7 @@ const initialClients: Client[] = [
         declarationNumber: '06532/22/01/000122',
         recipientName: 'Иван Петров',
         recipientPhone: '+380 67 111 22 33',
-        documents: ['Договор.pdf', 'Счет.pdf'],
+        documents: ['Договор.pdf', 'Счет.xlsx', 'КП.docx', 'Фото_партии.jpg'],
         comment: 'Продление договора.',
       },
       {
@@ -389,7 +410,7 @@ const initialClients: Client[] = [
         declarationNumber: '06532/22/01/000123',
         recipientName: 'Марина Дрозд',
         recipientPhone: '+380 67 222 44 55',
-        documents: ['ТТН.pdf'],
+        documents: ['Накладная.xlsx', 'Презентация.pptx', 'Отчет.pdf', 'Архив.zip'],
         comment: 'Ожидаем подтверждение объема.',
       },
     ],

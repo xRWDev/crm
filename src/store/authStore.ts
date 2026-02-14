@@ -6,7 +6,9 @@ export type UserRole = 'director' | 'manager';
 interface AuthState {
   isAuthenticated: boolean;
   role: UserRole;
-  login: (role: UserRole) => void;
+  userId?: string;
+  userName?: string;
+  login: (role: UserRole, payload?: { userId?: string; userName?: string }) => void;
   logout: () => void;
   setRole: (role: UserRole) => void;
 }
@@ -16,8 +18,14 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       isAuthenticated: false,
       role: 'manager',
-      login: (role) => set({ isAuthenticated: true, role }),
-      logout: () => set({ isAuthenticated: false }),
+      login: (role, payload) =>
+        set({
+          isAuthenticated: true,
+          role,
+          userId: payload?.userId,
+          userName: payload?.userName,
+        }),
+      logout: () => set({ isAuthenticated: false, userId: undefined, userName: undefined }),
       setRole: (role) => set({ role }),
     }),
     {

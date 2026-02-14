@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Lock, User, ShieldCheck } from 'lucide-react';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuthStore, type UserRole } from '@/store/authStore';
+import { useCRMStore } from '@/store/crmStore';
 
 export default function Login() {
   const navigate = useNavigate();
   const login = useAuthStore((state) => state.login);
+  const employees = useCRMStore((state) => state.employees);
 
   const [role, setRole] = useState<UserRole>('manager');
   const [loginValue, setLoginValue] = useState('');
@@ -14,7 +16,23 @@ export default function Login() {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    login(role);
+    const normalizedLogin = loginValue.trim().toLowerCase();
+    const matchedEmployee = employees.find((employee) => {
+      const loginMatch = employee.login?.toLowerCase() === normalizedLogin;
+      const emailMatch = employee.email?.toLowerCase() === normalizedLogin;
+      return loginMatch || emailMatch;
+    });
+    const adminFallback = employees.find((employee) => employee.role === 'admin');
+    const managerFallback = employees.find((employee) => employee.role === 'manager');
+    const activeEmployee =
+      role === 'director'
+        ? matchedEmployee || adminFallback || managerFallback
+        : matchedEmployee || managerFallback || adminFallback;
+
+    login(role, {
+      userId: activeEmployee?.id,
+      userName: activeEmployee?.name,
+    });
     navigate(role === 'director' ? '/dashboard/director' : '/dashboard/manager', { replace: true });
   };
 

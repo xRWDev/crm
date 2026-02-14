@@ -12,6 +12,7 @@ import {
   Clock,
   Building2,
   FileSpreadsheet,
+  FileImage,
   FileText,
   Filter,
   Globe,
@@ -19,6 +20,7 @@ import {
   MapPin,
   MessageCircle,
   MoreVertical,
+  CornerUpLeft,
   Paperclip,
   Pencil,
   PhoneCall,
@@ -144,6 +146,17 @@ type ClientRecord = {
     authorId?: string;
     authorName?: string;
     updatedAt?: Date;
+    attachments?: {
+      id: string;
+      name: string;
+      size: number;
+      type?: string;
+    }[];
+    replyTo?: {
+      id: string;
+      authorName?: string;
+      text?: string;
+    };
   }[];
   allowManagerDeleteComments?: boolean;
   communications?: {
@@ -174,6 +187,21 @@ type ClientRecord = {
     recipientOffice?: string;
     documents?: string[];
   }[];
+};
+
+type ClientCommunicationRecord = NonNullable<ClientRecord["communications"]>[number];
+
+type MessageAttachment = {
+  id: string;
+  name: string;
+  size: number;
+  type?: string;
+};
+
+type MessageReply = {
+  id: string;
+  authorName?: string;
+  text?: string;
 };
 
 type DealFormState = {
@@ -371,6 +399,40 @@ const formatAmount = (value?: number | null) => {
   return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(value);
 };
 
+const normalizeDocumentName = (value?: string) => {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return "document.txt";
+  return trimmed.replace(/[\\/:*?"<>|]+/g, "_");
+};
+
+const isDocumentUrl = (value: string) => /^https?:\/\//i.test(value) || value.startsWith("/");
+
+const getDocumentMeta = (value: string) => {
+  const name = value.toLowerCase();
+  const ext = name.includes(".") ? name.split(".").pop() ?? "" : "";
+  const has = (keys: string[]) => keys.some((key) => name.includes(key));
+
+  if (["xls", "xlsx", "csv"].includes(ext) || has(["excel", "xls"])) {
+    return { icon: FileSpreadsheet, label: "XLS", className: "deal-doc deal-doc--sheet" };
+  }
+  if (["doc", "docx", "rtf"].includes(ext) || has(["word", "doc"])) {
+    return { icon: FileText, label: "DOC", className: "deal-doc deal-doc--doc" };
+  }
+  if (["pdf"].includes(ext) || has(["pdf"])) {
+    return { icon: FileText, label: "PDF", className: "deal-doc deal-doc--pdf" };
+  }
+  if (["ppt", "pptx", "key"].includes(ext) || has(["ppt", "presentation"])) {
+    return { icon: FileText, label: "PPT", className: "deal-doc deal-doc--ppt" };
+  }
+  if (["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(ext) || has(["jpg", "png", "image"])) {
+    return { icon: FileImage, label: "IMG", className: "deal-doc deal-doc--image" };
+  }
+  if (["zip", "rar", "7z"].includes(ext)) {
+    return { icon: FileText, label: "ZIP", className: "deal-doc deal-doc--archive" };
+  }
+  return { icon: FileText, label: ext ? ext.toUpperCase().slice(0, 4) : "FILE", className: "deal-doc" };
+};
+
 const getInitials = (value?: string) => {
   if (!value) return "—";
   return value
@@ -481,7 +543,15 @@ const getLastCommentText = (client: Client) => {
     (a, b) =>
       (toDate(b.createdAt)?.getTime() ?? 0) - (toDate(a.createdAt)?.getTime() ?? 0)
   );
-  return sorted[0]?.text || "—";
+  const latest = sorted[0];
+  const text = latest?.text?.trim();
+  if (text) return text;
+  if (latest?.attachments?.length) {
+    return latest.attachments.length === 1
+      ? latest.attachments[0]?.name ?? "Вложение"
+      : `Вложения (${latest.attachments.length})`;
+  }
+  return "—";
 };
 
 const mapClientFromStore = (
@@ -807,7 +877,7 @@ const ClientsPage = () => {
           return (
             <button
               aria-label={client.starred ? "Убрать из избранного" : "В избранное"}
-              className="h-8 w-8 rounded-full flex items-center justify-center transition-colors hover:bg-white/60"
+              className="clients-icon-btn h-8 w-8 rounded-full flex items-center justify-center"
               onClick={(event) => {
                 event.stopPropagation();
                 if (client.id.startsWith("mock-")) {
@@ -885,7 +955,7 @@ const ClientsPage = () => {
         cell: ({ row }) => (
           <button
             aria-label="Скопировать email"
-            className="h-8 w-8 rounded-full flex items-center justify-center text-muted-foreground hover:bg-white/60"
+            className="clients-icon-btn h-8 w-8 rounded-full flex items-center justify-center text-muted-foreground"
             onClick={(event) => {
               event.stopPropagation();
               const email = row.original.email || "";
@@ -906,7 +976,7 @@ const ClientsPage = () => {
         cell: ({ row }) => (
           <button
             aria-label="Открыть сайт"
-            className="h-8 w-8 rounded-full flex items-center justify-center text-muted-foreground hover:bg-white/60"
+            className="clients-icon-btn h-8 w-8 rounded-full flex items-center justify-center text-muted-foreground"
             onClick={(event) => {
               event.stopPropagation();
               const url = row.original.website;
@@ -2273,6 +2343,8 @@ const ClientDetailSheet = ({
 
   const [comments, setComments] = useState(activeClient.comments ?? []);
   const [commentInput, setCommentInput] = useState("");
+  const [pendingAttachments, setPendingAttachments] = useState<MessageAttachment[]>([]);
+  const [replyToMessage, setReplyToMessage] = useState<MessageReply | null>(null);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentText, setEditingCommentText] = useState("");
   const [draft, setDraft] = useState<ClientRecord>(activeClient);
@@ -2308,11 +2380,14 @@ const ClientDetailSheet = ({
   const [commFormOpen, setCommFormOpen] = useState(false);
   const [activeContactId, setActiveContactId] = useState<string | null>(null);
   const popoverBoundaryRef = useRef<HTMLDivElement | null>(null);
+  const chatFileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open || !client) return;
     setComments(client.comments ?? []);
     setCommentInput("");
+    setPendingAttachments([]);
+    setReplyToMessage(null);
     setEditingCommentId(null);
     setEditingCommentText("");
     setDraft(client);
@@ -2423,14 +2498,42 @@ const ClientDetailSheet = ({
   };
 
   const getLatestCommentText = (
-    items: { id: string; text: string; createdAt: Date }[]
+    items: { id: string; text: string; createdAt: Date; attachments?: MessageAttachment[] }[]
   ) => {
     if (!items.length) return "—";
     const sorted = [...items].sort(
       (a, b) =>
         (toDate(b.createdAt)?.getTime() ?? 0) - (toDate(a.createdAt)?.getTime() ?? 0)
     );
-    return sorted[0]?.text || "—";
+    const latest = sorted[0];
+    const text = latest?.text?.trim();
+    if (text) return text;
+    if (latest?.attachments?.length) {
+      return latest.attachments.length === 1
+        ? latest.attachments[0]?.name
+        : `Вложения (${latest.attachments.length})`;
+    }
+    return "—";
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  };
+
+  const getReplyPreviewText = (message: {
+    text?: string;
+    attachments?: MessageAttachment[];
+  }) => {
+    const text = message.text?.trim();
+    if (text) return text;
+    if (message.attachments?.length) {
+      return message.attachments.length === 1
+        ? message.attachments[0]?.name ?? ""
+        : `Вложения (${message.attachments.length})`;
+    }
+    return "";
   };
 
   const persistComments = (nextComments: typeof comments) => {
@@ -2447,16 +2550,38 @@ const ClientDetailSheet = ({
 
   const handleAddComment = () => {
     const text = commentInput.trim();
-    if (!text) return;
+    if (!text && pendingAttachments.length === 0) return;
     const next = {
       id: `comment-${Date.now()}`,
       text,
       createdAt: new Date(),
       authorId: currentUserId,
       authorName: currentUserName,
+      attachments: pendingAttachments.length ? pendingAttachments : undefined,
+      replyTo: replyToMessage ? { ...replyToMessage } : undefined,
     };
     persistComments([next, ...comments]);
     setCommentInput("");
+    setPendingAttachments([]);
+    setReplyToMessage(null);
+  };
+
+  const handleAttachFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+    const timestamp = Date.now();
+    const next = files.map((file, index) => ({
+      id: `file-${timestamp}-${index}`,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    }));
+    setPendingAttachments((prev) => [...prev, ...next]);
+    event.target.value = "";
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    setPendingAttachments((prev) => prev.filter((item) => item.id !== id));
   };
 
   const handleDeleteComment = (id: string) => {
@@ -2614,29 +2739,86 @@ const ClientDetailSheet = ({
     appendDealDocuments(Array.from(event.dataTransfer.files ?? []));
   };
 
+  const createDocumentBlob = (name: string) =>
+    new Blob([`Файл: ${name}\n\nСодержимое не прикреплено в демо-режиме.`], {
+      type: "text/plain;charset=utf-8",
+    });
+
+  const handlePreviewDocument = (name: string) => {
+    const safeName = normalizeDocumentName(name);
+    if (isDocumentUrl(name)) {
+      window.open(name, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const url = URL.createObjectURL(createDocumentBlob(safeName));
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+  };
+
+  const handleDownloadDocument = (name: string) => {
+    const safeName = normalizeDocumentName(name);
+    const url = isDocumentUrl(name) ? name : URL.createObjectURL(createDocumentBlob(safeName));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = safeName;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    if (!isDocumentUrl(name)) {
+      window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+    }
+  };
+
   const computeCommunicationMeta = (items: NonNullable<ClientRecord["communications"]>) => {
     const planned = items.filter((item) => item.status === "planned");
-    const plannedDates = planned
-      .map((item) => toDate(item.scheduledAt))
-      .filter(Boolean) as Date[];
-    const next = plannedDates.sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+    const plannedWithDate = planned
+      .map((item) => ({ item, time: toDate(item.scheduledAt) }))
+      .filter((entry) => entry.time) as { item: ClientCommunicationRecord; time: Date }[];
+    plannedWithDate.sort((a, b) => a.time.getTime() - b.time.getTime());
+    const nextPlanned = plannedWithDate[0]?.item;
+    const next = plannedWithDate[0]?.time ?? null;
 
     const closed = items.filter((item) => item.status === "closed");
     const closedWithTime = closed
       .map((item) => ({
         item,
-        time: toDate(item.closedAt ?? item.scheduledAt)?.getTime() ?? 0,
+        time: toDate(item.closedAt ?? item.scheduledAt),
       }))
-      .sort((a, b) => b.time - a.time);
+      .filter((entry) => entry.time) as { item: ClientCommunicationRecord; time: Date }[];
+    closedWithTime.sort((a, b) => b.time.getTime() - a.time.getTime());
     const lastClosed = closedWithTime[0]?.item;
     const last = lastClosed ? toDate(lastClosed.closedAt ?? lastClosed.scheduledAt) : null;
 
-    let status: CommunicationStatus = "none";
-    if (planned.length) status = "in_progress";
-    else if (lastClosed?.result === "success") status = "success";
-    else if (lastClosed?.result === "failed") status = "refused";
+    const latestAction = items
+      .map((item) => {
+        const time = toDate(
+          item.status === "closed"
+            ? item.closedAt ?? item.createdAt ?? item.scheduledAt
+            : item.createdAt ?? item.scheduledAt
+        );
+        return {
+          item,
+          time: time?.getTime() ?? 0,
+          priority: item.status === "closed" ? 1 : 0,
+        };
+      })
+      .sort((a, b) => (b.time - a.time) || (b.priority - a.priority))[0]?.item;
 
-    return { next, last, status };
+    let status: CommunicationStatus = "none";
+    if (latestAction) {
+      if (latestAction.status === "planned") status = "in_progress";
+      else status = latestAction.result === "success" ? "success" : "refused";
+    }
+
+    const lastClosedNote = (lastClosed?.note ?? "").trim();
+    const nextPlannedNote = (nextPlanned?.note ?? "").trim();
+    const note =
+      status === "in_progress"
+        ? nextPlannedNote || lastClosedNote
+        : lastClosedNote || nextPlannedNote;
+
+    return { next, last, status, note };
   };
 
   const persistCommunications = (
@@ -2644,8 +2826,9 @@ const ClientDetailSheet = ({
     noteValue: string = commNote
   ) => {
     setCommunications(nextCommunications);
-    const { next, last, status } = computeCommunicationMeta(nextCommunications);
+    const { next, last, status, note } = computeCommunicationMeta(nextCommunications);
     const trimmedNote = noteValue.trim();
+    const nextNote = note || trimmedNote;
 
     if (client.id.startsWith("mock-")) {
       updateMockClient(client.id, {
@@ -2653,7 +2836,7 @@ const ClientDetailSheet = ({
         nextCommunicationAt: next,
         lastCommunicationAt: last,
         status,
-        communicationNote: trimmedNote,
+        communicationNote: nextNote,
       });
     } else {
       updateClient(client.id, {
@@ -2661,7 +2844,7 @@ const ClientDetailSheet = ({
         nextContactAt: next,
         lastCommunicationAt: last,
         communicationStatus: status,
-        notes: trimmedNote,
+        notes: nextNote,
       });
     }
 
@@ -2670,7 +2853,7 @@ const ClientDetailSheet = ({
       nextCommunicationAt: next,
       lastCommunicationAt: last,
       status,
-      communicationNote: trimmedNote,
+      communicationNote: nextNote,
     }));
   };
 
@@ -2916,9 +3099,9 @@ const ClientDetailSheet = ({
     : "Коммуникация не запланирована";
 
   const chatTimeline = useMemo(() => {
-    // Oldest -> newest (chat-like order)
+    // Newest -> oldest (latest on top)
     const sorted = [...comments].sort(
-      (a, b) => (toDate(a.createdAt)?.getTime() ?? 0) - (toDate(b.createdAt)?.getTime() ?? 0)
+      (a, b) => (toDate(b.createdAt)?.getTime() ?? 0) - (toDate(a.createdAt)?.getTime() ?? 0)
     );
     const result: Array<
       | { type: "day"; id: string; label: string }
@@ -2938,15 +3121,6 @@ const ClientDetailSheet = ({
     return result;
   }, [comments]);
 
-  const docsFlat = useMemo(() => dealList.flatMap((deal) => deal.documents ?? []), [dealList]);
-  const documentSummary = useMemo(() => {
-    const contracts = docsFlat.filter((name) => /договор/i.test(name)).length;
-    const invoices = docsFlat.filter((name) => /ттн|наклад/i.test(name)).length;
-    const quotes = docsFlat.filter((name) => /кп|коммер/i.test(name)).length;
-    const total = docsFlat.length;
-    return { contracts, invoices, quotes, total };
-  }, [docsFlat]);
-
   const quotesList = useMemo(
     () => dealList.filter((deal) => !deal.stage || deal.stage === "quote"),
     [dealList]
@@ -2955,6 +3129,55 @@ const ClientDetailSheet = ({
     () => dealList.filter((deal) => !deal.stage || deal.stage === "deal"),
     [dealList]
   );
+
+  const renderDealDocuments = (documents?: string[]) => {
+    const docs = (documents ?? []).map((doc) => doc.trim()).filter(Boolean);
+    if (!docs.length) {
+      return <span className="text-xs text-muted-foreground">—</span>;
+    }
+    const maxVisible = 4;
+    const visibleDocs = docs.slice(0, maxVisible);
+    const extraCount = docs.length - visibleDocs.length;
+
+    return (
+      <div className="deal-docs">
+        {visibleDocs.map((doc, index) => {
+          const meta = getDocumentMeta(doc);
+          const Icon = meta.icon;
+          return (
+            <DropdownMenu key={`${doc}-${index}`}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={meta.className}
+                  data-doc-name={doc}
+                  title={doc}
+                  aria-label={`Документ: ${doc}`}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className="deal-doc-label">{meta.label}</span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-40">
+                <DropdownMenuItem onClick={() => handlePreviewDocument(doc)}>
+                  Просмотреть
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleDownloadDocument(doc)}>
+                  Скачать
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        })}
+        {extraCount > 0 && (
+          <span className="deal-docs-more" title={`Еще ${extraCount}`}>
+            +{extraCount}
+          </span>
+        )}
+      </div>
+    );
+  };
 
   const DealCarrierCard = ({
     declarationNumber,
@@ -3465,7 +3688,7 @@ const ClientDetailSheet = ({
                 <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
                   <TabsContent value="quotes" className="mt-0 space-y-4">
                     <div className="overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto overflow-y-visible">
                         <table className="w-full border-collapse text-sm">
                           <thead>
                             <tr className="border-b border-slate-200/70 bg-slate-50 text-xs font-medium text-slate-500">
@@ -3476,6 +3699,7 @@ const ClientDetailSheet = ({
                               <th className="px-3 py-2.5 text-left">Ед. измерения</th>
                               <th className="px-3 py-2.5 text-left">Кол-во</th>
                               <th className="px-3 py-2.5 text-left">Цена</th>
+                              <th className="px-3 py-2.5 text-left">Документы</th>
                               <th className="px-3 py-2.5 text-left">№ Дек, почты</th>
                               <th className="px-3 py-2.5 text-left">Комментарии</th>
                               <th className="px-3 py-2.5 text-right" />
@@ -3520,6 +3744,9 @@ const ClientDetailSheet = ({
                                     <td className="px-3 py-2 text-xs text-muted-foreground">{deal.unit}</td>
                                     <td className="px-3 py-2 text-sm">{formatAmount(deal.qty)}</td>
                                     <td className="px-3 py-2 text-sm">{formatAmount(deal.price)}</td>
+                                    <td className="px-3 py-2">
+                                      {renderDealDocuments(deal.documents)}
+                                    </td>
                                     <td className="px-3 py-2 text-xs text-muted-foreground">
                                     <div className="flex items-start gap-2">
                                       <DealCarrierCard
@@ -3550,7 +3777,7 @@ const ClientDetailSheet = ({
                               })
                             ) : (
                               <tr>
-                                <td colSpan={10} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                                <td colSpan={11} className="px-3 py-10 text-center text-sm text-muted-foreground">
                                   Просчетов пока нет.
                                 </td>
                               </tr>
@@ -3567,7 +3794,7 @@ const ClientDetailSheet = ({
                         <Button
                           size="sm"
                           variant="secondary"
-                          className="h-8 px-3 text-xs"
+                          className="clients-add-btn h-8 px-3 text-xs"
                           onClick={() =>
                             setDealFormOpen((prev) => {
                               const next = !prev;
@@ -3726,7 +3953,7 @@ const ClientDetailSheet = ({
                     )}
 
                     <div className="overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto overflow-y-visible">
                         <table className="w-full border-collapse text-sm">
                         <thead>
                           <tr className="border-b border-slate-200/70 bg-slate-50 text-xs font-medium text-slate-500">
@@ -3737,6 +3964,7 @@ const ClientDetailSheet = ({
                             <th className="px-3 py-2 text-left">Ед. измерения</th>
                             <th className="px-3 py-2 text-left">Кол-во</th>
                             <th className="px-3 py-2 text-left">Цена</th>
+                            <th className="px-3 py-2 text-left">Документы</th>
                             <th className="px-3 py-2 text-left">№ Дек, почты</th>
                             <th className="px-3 py-2 text-left">Комментарии</th>
                             <th className="px-3 py-2 text-right"></th>
@@ -3781,6 +4009,9 @@ const ClientDetailSheet = ({
                                   <td className="px-3 py-2 text-xs text-muted-foreground">{deal.unit}</td>
                                   <td className="px-3 py-2 text-sm">{formatAmount(deal.qty)}</td>
                                   <td className="px-3 py-2 text-sm">{formatAmount(deal.price)}</td>
+                                  <td className="px-3 py-2">
+                                    {renderDealDocuments(deal.documents)}
+                                  </td>
                                   <td className="px-3 py-2 text-xs text-muted-foreground">
                                     <div className="flex items-start gap-2">
                                       <DealCarrierCard
@@ -3832,7 +4063,7 @@ const ClientDetailSheet = ({
                             })
                           ) : (
                             <tr>
-                              <td colSpan={10} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                              <td colSpan={11} className="px-3 py-10 text-center text-sm text-muted-foreground">
                                 Сделок пока нет.
                               </td>
                             </tr>
@@ -3844,51 +4075,108 @@ const ClientDetailSheet = ({
                   </TabsContent>
 
                   <div className="overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                    <div className="flex items-center gap-3 bg-slate-50/80 px-4 py-3">
-                      <button
-                        type="button"
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-[8px] text-slate-500 transition hover:bg-white/80"
-                        aria-label="Прикрепить"
-                      >
-                        <Paperclip className="h-4 w-4" />
-                      </button>
-                      <div className="relative flex-1">
-                        <input
-                          className="h-10 w-full rounded-[8px] border border-slate-200/70 bg-white px-3 pr-11 text-sm outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                          placeholder="Отправить сообщение"
-                          value={commentInput}
-                          onChange={(event) => setCommentInput(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              handleAddComment();
-                            }
-                          }}
-                        />
+                    <div className="bg-slate-50/80 px-4 py-3">
+                      <div className="flex items-center gap-3">
                         <button
                           type="button"
-                          className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[6px] text-slate-400 transition hover:bg-slate-50"
-                          aria-label="Эмодзи"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-[8px] text-slate-500 transition hover:bg-white/80"
+                          aria-label="Прикрепить"
+                          onClick={() => chatFileInputRef.current?.click()}
                         >
-                          <Smile className="h-4 w-4" />
+                          <Paperclip className="h-4 w-4" />
+                        </button>
+                        <input
+                          ref={chatFileInputRef}
+                          type="file"
+                          multiple
+                          className="hidden"
+                          onChange={handleAttachFiles}
+                        />
+                        <div className="relative flex-1">
+                          <input
+                            className="h-10 w-full rounded-[8px] border border-slate-200/70 bg-white px-3 pr-11 text-sm outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                            placeholder="Отправить сообщение"
+                            value={commentInput}
+                            onChange={(event) => setCommentInput(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                handleAddComment();
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[6px] text-slate-400 transition hover:bg-slate-50"
+                            aria-label="Эмодзи"
+                          >
+                            <Smile className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-sky-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-600 disabled:cursor-default disabled:opacity-60"
+                          onClick={handleAddComment}
+                          disabled={!commentInput.trim() && pendingAttachments.length === 0}
+                        >
+                          Отправить
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-[8px] text-slate-500 transition hover:bg-slate-100"
+                          aria-label="Меню"
+                        >
+                          <MoreVertical className="h-4 w-4" />
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-sky-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-600 disabled:cursor-default disabled:opacity-60"
-                        onClick={handleAddComment}
-                        disabled={!commentInput.trim()}
-                      >
-                        Отправить
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-[8px] text-slate-500 transition hover:bg-slate-100"
-                        aria-label="Меню"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </button>
+                      {(replyToMessage || pendingAttachments.length > 0) && (
+                        <div className="mt-2 space-y-2">
+                          {replyToMessage && (
+                            <div className="flex items-start justify-between rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                              <div className="min-w-0">
+                                <div className="text-[10px] text-slate-400">Ответ на сообщение</div>
+                                <div className="text-[12px] font-semibold text-slate-700">
+                                  {replyToMessage.authorName || "Менеджер"}
+                                </div>
+                                <div className="truncate text-[11px] text-slate-500">
+                                  {replyToMessage.text || "Вложение"}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                                aria-label="Убрать ответ"
+                                onClick={() => setReplyToMessage(null)}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          )}
+                          {pendingAttachments.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {pendingAttachments.map((file) => (
+                                <div
+                                  key={file.id}
+                                  className="flex items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600"
+                                >
+                                  <Paperclip className="h-3 w-3 text-slate-400" />
+                                  <span className="max-w-[140px] truncate">{file.name}</span>
+                                  <span className="text-[10px] text-slate-400">{formatFileSize(file.size)}</span>
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-4 w-4 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                                    aria-label="Удалить файл"
+                                    onClick={() => handleRemoveAttachment(file.id)}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="max-h-[420px] overflow-y-auto px-4 py-4 custom-scrollbar">
@@ -3921,6 +4209,20 @@ const ClientDetailSheet = ({
                                     <span className="font-semibold text-slate-700">{authorName}</span>
                                     <span>{formatClockTime(item.msg.createdAt)}</span>
                                     <div className="ml-auto flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                                      <button
+                                        type="button"
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                                        onClick={() =>
+                                          setReplyToMessage({
+                                            id: item.msg.id,
+                                            authorName,
+                                            text: getReplyPreviewText(item.msg),
+                                          })
+                                        }
+                                        aria-label="Ответить"
+                                      >
+                                        <CornerUpLeft className="h-3.5 w-3.5" />
+                                      </button>
                                       {canEdit && (
                                         <button
                                           type="button"
@@ -3961,8 +4263,37 @@ const ClientDetailSheet = ({
                                       </div>
                                     </div>
                                   ) : (
-                                    <div className="mt-1 whitespace-pre-line rounded-[6px] bg-sky-50 px-3 py-2 text-sm text-slate-700">
-                                      {item.msg.text}
+                                    <div className="mt-1 space-y-2">
+                                      {item.msg.replyTo && (
+                                        <div className="rounded-[6px] border-l-2 border-sky-400 bg-sky-50/70 px-3 py-2 text-[11px] text-slate-600">
+                                          <div className="text-[10px] text-slate-400">Ответ</div>
+                                          <div className="font-semibold text-slate-700">
+                                            {item.msg.replyTo.authorName || "Менеджер"}
+                                          </div>
+                                          <div className="truncate text-[11px] text-slate-500">
+                                            {item.msg.replyTo.text || "Вложение"}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {item.msg.text && (
+                                        <div className="whitespace-pre-line rounded-[6px] bg-sky-50 px-3 py-2 text-sm text-slate-700">
+                                          {item.msg.text}
+                                        </div>
+                                      )}
+                                      {item.msg.attachments?.length ? (
+                                        <div className="flex flex-wrap gap-2">
+                                          {item.msg.attachments.map((file) => (
+                                            <div
+                                              key={file.id}
+                                              className="flex items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600"
+                                            >
+                                              <Paperclip className="h-3 w-3 text-slate-400" />
+                                              <span className="max-w-[180px] truncate">{file.name}</span>
+                                              <span className="text-[10px] text-slate-400">{formatFileSize(file.size)}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : null}
                                     </div>
                                   )}
                                   {item.msg.updatedAt && (
@@ -3985,6 +4316,7 @@ const ClientDetailSheet = ({
               <div className="client-details-side flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto pr-0 custom-scrollbar">
                 <InfoCard
                   title="Коммуникация"
+                  className="comm-card animate-fade-up"
                   titleAddon={
                     <Button
                       size="sm"
@@ -3993,7 +4325,7 @@ const ClientDetailSheet = ({
                         "h-7 px-3 text-xs",
                         commFormOpen
                           ? "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700"
-                          : "bg-white"
+                          : "clients-add-btn"
                       )}
                       onClick={() => setCommFormOpen((prev) => !prev)}
                     >
@@ -4002,13 +4334,13 @@ const ClientDetailSheet = ({
                   }
                 >
                   {commFormOpen ? (
-                    <div className="space-y-3">
+                    <div className="comm-form space-y-3">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <Select
                         value={commType}
                         onValueChange={(value) => setCommType(value as "call" | "meeting")}
                       >
-                        <SelectTrigger className="h-9">
+                        <SelectTrigger className="h-9 comm-field">
                           <SelectValue placeholder="Тип коммуникации" />
                         </SelectTrigger>
                         <SelectContent>
@@ -4029,7 +4361,7 @@ const ClientDetailSheet = ({
                           }
                         }}
                       >
-                        <SelectTrigger className="h-9">
+                        <SelectTrigger className="h-9 comm-field">
                           <SelectValue placeholder="Статус" />
                         </SelectTrigger>
                         <SelectContent>
@@ -4044,13 +4376,13 @@ const ClientDetailSheet = ({
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <Input
                           type="date"
-                          className="h-9"
+                          className="h-9 comm-field"
                           value={commDate}
                           onChange={(event) => setCommDate(event.target.value)}
                         />
                         <Input
                           type="time"
-                          className="h-9"
+                          className="h-9 comm-field"
                           value={commTime}
                           onChange={(event) => setCommTime(event.target.value)}
                         />
@@ -4058,18 +4390,18 @@ const ClientDetailSheet = ({
                     )}
 
                     <Input
-                      className="h-9"
+                      className="h-9 comm-field"
                       placeholder="Короткая заметка для коммуникации"
                       value={commNote}
                       onChange={(event) => setCommNote(event.target.value)}
                     />
 
                     {commStatus === "failed" && (
-                      <div className="rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs">
+                      <div className="comm-panel rounded-[6px] px-3 py-2 text-xs">
                         <div className="mb-2 font-semibold text-slate-500">Причина</div>
                         <div className="space-y-1">
                           {COMMUNICATION_FAIL_REASONS.map((reason) => (
-                            <label key={reason.value} className="flex items-center gap-2 text-xs text-slate-600">
+                            <label key={reason.value} className="comm-option flex items-center gap-2 text-xs text-slate-600">
                               <input
                                 type="radio"
                                 name="comm-fail-reason"
@@ -4084,8 +4416,8 @@ const ClientDetailSheet = ({
                     )}
 
                     {commStatus !== "planned" && (
-                      <div className="rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs">
-                        <label className="flex items-center gap-2 text-xs text-slate-600">
+                      <div className="comm-panel rounded-[6px] px-3 py-2 text-xs">
+                        <label className="comm-option flex items-center gap-2 text-xs text-slate-600">
                           <input
                             type="checkbox"
                             checked={commFollowUpEnabled}
@@ -4097,13 +4429,13 @@ const ClientDetailSheet = ({
                           <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                             <Input
                               type="date"
-                              className="h-9"
+                              className="h-9 comm-field"
                               value={commDate}
                               onChange={(event) => setCommDate(event.target.value)}
                             />
                             <Input
                               type="time"
-                              className="h-9"
+                              className="h-9 comm-field"
                               value={commTime}
                               onChange={(event) => setCommTime(event.target.value)}
                             />
@@ -4113,15 +4445,15 @@ const ClientDetailSheet = ({
                     )}
 
                     <div className="flex flex-wrap gap-2">
-                      <Button size="sm" onClick={handleSaveCommunication}>
+                      <Button size="sm" className="comm-btn-primary" onClick={handleSaveCommunication}>
                         {commStatus === "planned" ? "Запланировать" : "Сохранить"}
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={handleClearCommunicationForm}>
+                      <Button size="sm" variant="ghost" className="comm-btn-ghost" onClick={handleClearCommunicationForm}>
                         Очистить
                       </Button>
                     </div>
 
-                    <div className="rounded-[10px] bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                    <div className="comm-info-pill rounded-[10px] px-3 py-2 text-xs">
                       <div className="flex items-center gap-2">
                         <Clock className="h-3.5 w-3.5" />
                         <span>
@@ -4131,20 +4463,18 @@ const ClientDetailSheet = ({
                     </div>
 
                     <Collapsible open={commHistoryOpen} onOpenChange={setCommHistoryOpen}>
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>История</span>
-                        <CollapsibleTrigger asChild>
-                          <button
-                            type="button"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/60 text-muted-foreground transition hover:bg-slate-50/80"
-                            aria-label="Свернуть историю"
-                          >
-                            <ChevronDown
-                              className={cn("h-4 w-4 transition-transform", !commHistoryOpen && "-rotate-90")}
-                            />
-                          </button>
-                        </CollapsibleTrigger>
-                      </div>
+                      <CollapsibleTrigger asChild>
+                        <button
+                          type="button"
+                          className="comm-history-toggle text-xs"
+                          aria-label={commHistoryOpen ? "Свернуть историю" : "Показать историю"}
+                        >
+                          <span>История</span>
+                          <ChevronDown
+                            className={cn("h-4 w-4 transition-transform", !commHistoryOpen && "-rotate-90")}
+                          />
+                        </button>
+                      </CollapsibleTrigger>
                       <CollapsibleContent>
                         <div className="mt-2 max-h-64 overflow-y-auto pr-1 custom-scrollbar overscroll-auto space-y-2">
                           {sortedCommunications.length ? (
@@ -4163,7 +4493,7 @@ const ClientDetailSheet = ({
                                 : "Завершено неудачно";
 
                               return (
-                                <div key={item.id} className="rounded-[10px] bg-slate-50 px-3 py-2 text-xs">
+                                <div key={item.id} className="comm-history-item rounded-[10px] px-3 py-2 text-xs">
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-2">
                                       <span className="font-semibold text-foreground">
@@ -4189,7 +4519,12 @@ const ClientDetailSheet = ({
                                   )}
                                   {isPlanned && (
                                     <div className="mt-2">
-                                      <Button size="sm" variant="outline" onClick={() => handleStartCloseCommunication(item.id)}>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="comm-btn-outline"
+                                        onClick={() => handleStartCloseCommunication(item.id)}
+                                      >
                                         Закрыть
                                       </Button>
                                     </div>
@@ -4200,6 +4535,10 @@ const ClientDetailSheet = ({
                                         <Button
                                           size="sm"
                                           variant={closingResult === "success" ? "default" : "secondary"}
+                                          className={cn(
+                                            "comm-btn-toggle comm-btn-success",
+                                            closingResult === "success" && "is-active"
+                                          )}
                                           onClick={() => setClosingResult("success")}
                                         >
                                           Завершено удачно
@@ -4207,6 +4546,10 @@ const ClientDetailSheet = ({
                                         <Button
                                           size="sm"
                                           variant={closingResult === "failed" ? "default" : "secondary"}
+                                          className={cn(
+                                            "comm-btn-toggle comm-btn-danger",
+                                            closingResult === "failed" && "is-active"
+                                          )}
                                           onClick={() => setClosingResult("failed")}
                                         >
                                           Завершено неудачно
@@ -4228,10 +4571,15 @@ const ClientDetailSheet = ({
                                         </div>
                                       )}
                                       <div className="mt-2 flex gap-2">
-                                        <Button size="sm" onClick={handleConfirmCloseCommunication}>
+                                        <Button size="sm" className="comm-btn-primary" onClick={handleConfirmCloseCommunication}>
                                           Сохранить
                                         </Button>
-                                        <Button size="sm" variant="ghost" onClick={handleCancelCloseCommunication}>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="comm-btn-ghost"
+                                          onClick={handleCancelCloseCommunication}
+                                        >
                                           Отмена
                                         </Button>
                                       </div>
@@ -4249,7 +4597,7 @@ const ClientDetailSheet = ({
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 rounded-[4px] border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      <div className="comm-info-pill flex items-center gap-2 rounded-[4px] px-3 py-2 text-xs">
                         <Calendar className="h-4 w-4 text-slate-400" />
                         <span className="truncate">{nextCommunicationPill}</span>
                       </div>
@@ -4264,7 +4612,7 @@ const ClientDetailSheet = ({
                               {meetingTodoItems.map((text, index) => (
                                 <label
                                   key={`${index}-${text}`}
-                                  className="flex items-start gap-2 py-2 text-xs text-slate-700"
+                                  className="comm-option flex items-start gap-2 py-2 text-xs text-slate-700"
                                 >
                                   <input type="checkbox" className="mt-0.5 h-4 w-4 accent-sky-600" />
                                   <span className="flex-1">
@@ -4294,7 +4642,7 @@ const ClientDetailSheet = ({
                             {communicationTodoItems.map((text, index) => (
                               <label
                                 key={`${index}-${text}`}
-                                className="flex items-start gap-2 py-2 text-xs text-slate-700"
+                                className="comm-option flex items-start gap-2 py-2 text-xs text-slate-700"
                               >
                                 <input type="checkbox" className="mt-0.5 h-4 w-4 accent-sky-600" />
                                 <span className="flex-1">
@@ -4623,55 +4971,6 @@ const ClientDetailSheet = ({
                   )}
                 </InfoCard>
 
-                <InfoCard title="Документы" className="animate-fade-up" bodyClassName="space-y-0">
-                  <div className="divide-y divide-slate-200/60">
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-50"
-                    >
-                      <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-slate-50 text-sky-600">
-                        <FileText className="h-4 w-4" />
-                      </div>
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">
-                        Договоры
-                      </span>
-                      <span className="inline-flex h-5 min-w-6 items-center justify-center rounded-[3px] bg-slate-100 px-2 text-[11px] font-semibold text-slate-600">
-                        {documentSummary.contracts}
-                      </span>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    </button>
-
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-50"
-                    >
-                      <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-slate-50 text-emerald-600">
-                        <FileSpreadsheet className="h-4 w-4" />
-                      </div>
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">
-                        Накладная
-                      </span>
-                      <span className="inline-flex h-5 min-w-6 items-center justify-center rounded-[3px] bg-slate-100 px-2 text-[11px] font-semibold text-slate-600">
-                        {documentSummary.invoices}
-                      </span>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    </button>
-
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-50"
-                    >
-                      <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-slate-50 text-indigo-600">
-                        <FileText className="h-4 w-4" />
-                      </div>
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">КП</span>
-                      <span className="inline-flex h-5 min-w-6 items-center justify-center rounded-[3px] bg-slate-100 px-2 text-[11px] font-semibold text-slate-600">
-                        {documentSummary.quotes}
-                      </span>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    </button>
-                  </div>
-                </InfoCard>
               </div>
             </div>
           </Tabs>
