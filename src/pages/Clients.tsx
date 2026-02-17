@@ -365,6 +365,31 @@ const buildMockContacts = (count: number): ClientContact[] =>
 const toDate = (value?: Date | string | null) =>
   value ? (value instanceof Date ? value : parseISO(String(value))) : null;
 
+const deriveCommunicationStatus = (
+  items?: NonNullable<ClientRecord["communications"]>,
+  fallback: CommunicationStatus = "none"
+): CommunicationStatus => {
+  if (!items || items.length === 0) return fallback ?? "none";
+  const latest = items
+    .map((item) => {
+      const time = toDate(
+        item.status === "closed"
+          ? item.closedAt ?? item.createdAt ?? item.scheduledAt
+          : item.createdAt ?? item.scheduledAt
+      );
+      return {
+        item,
+        time: time?.getTime() ?? 0,
+        priority: item.status === "closed" ? 1 : 0,
+      };
+    })
+    .sort((a, b) => (b.time - a.time) || (b.priority - a.priority))[0]?.item;
+
+  if (!latest) return fallback ?? "none";
+  if (latest.status === "planned") return "in_progress";
+  return latest.result === "success" ? "success" : "refused";
+};
+
 const formatDate = (value?: Date | string | null) => {
   const date = toDate(value);
   return date ? format(date, "dd.MM.yyyy") : "—";
@@ -518,7 +543,7 @@ const buildMockClients = (count: number, employees: { id: string; name: string }
       activityType,
       productCategory,
       clientType,
-      status: randomFrom(COMMUNICATION_STATUS),
+      status: "none",
       sourceChannel,
       lastCommunicationAt,
       nextCommunicationAt,
@@ -531,6 +556,7 @@ const buildMockClients = (count: number, employees: { id: string; name: string }
       ownerName: responsible?.name,
       starred: randomBool(0.25),
       contacts,
+      communications: [],
       allowManagerDeleteComments: false,
     });
   }
@@ -560,6 +586,10 @@ const mapClientFromStore = (
 ): ClientRecord => {
   const responsibleName =
     employees.find((emp) => emp.id === (client.responsibleId || client.managerId))?.name || "—";
+  const communicationStatus = deriveCommunicationStatus(
+    client.communications,
+    client.communicationStatus ?? "none"
+  );
   return {
     id: client.id,
     name: client.name,
@@ -572,7 +602,7 @@ const mapClientFromStore = (
     activityType: client.activityType,
     productCategory: client.productCategory,
     clientType: client.clientType,
-    status: client.communicationStatus,
+    status: communicationStatus,
     sourceChannel: client.sourceChannel,
     lastCommunicationAt: client.lastCommunicationAt ?? null,
     nextCommunicationAt: client.nextContactAt ?? null,
@@ -1255,7 +1285,7 @@ const ClientsPage = () => {
 
   return (
     <AppLayout title="Клиенты" subtitle={`${filteredClients.length.toLocaleString()} клиентов`}>
-      <div className={cn("clients-layout", filtersOpen && "is-open")}>
+      <div className={cn("clients-layout min-h-full", filtersOpen && "is-open")}>
         <button
           type="button"
           className={cn("filters-toggle", filtersOpen && "is-active")}
@@ -1376,11 +1406,11 @@ const ClientsPage = () => {
           </div>
         </aside>
 
-        <section className="clients-main space-y-4 min-w-0 relative h-[737px]">
-          <div className="glass-card rounded-[22px] p-4 overflow-hidden relative animate-fade-up">
+        <section className="clients-main flex min-h-0 min-w-0 flex-col gap-4 relative">
+          <div className="glass-card rounded-[22px] p-4 overflow-hidden relative flex min-h-0 flex-1 flex-col animate-fade-up">
             <div
               ref={tableContainerRef}
-              className="h-[649px] w-full min-w-0 overflow-x-auto overflow-y-auto floating-scrollbar"
+              className="flex-1 min-h-0 w-full min-w-0 overflow-x-auto overflow-y-auto floating-scrollbar"
               onScroll={(event) => {
                 const target = event.currentTarget;
                 if (target.scrollTop + target.clientHeight >= target.scrollHeight - 120) {
