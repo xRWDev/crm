@@ -762,6 +762,16 @@ const ClientsPage = () => {
     setMockClients((prev) => prev.map((client) => (client.id === id ? { ...client, ...data } : client)));
   };
 
+  const resetClientFilters = () => {
+    setCommunicationFilter("all");
+    setTypeFilter("all");
+    setActivityFilter("all");
+    setProductFilter("all");
+    setRegionFilter("all");
+    setCityFilter("all");
+    setSearchQuery("");
+  };
+
   const scopedClients = useMemo(() => {
     return allClients.filter((client) => {
       if (baseFilter === "favorites" && !client.starred) return false;
@@ -1340,7 +1350,10 @@ const ClientsPage = () => {
                     icon={Users}
                     label="Все клиенты"
                     count={counts.all}
-                    onClick={() => setBaseFilter("all")}
+                    onClick={() => {
+                      setBaseFilter("all");
+                      resetClientFilters();
+                    }}
                   />
                 )}
                 <FilterRow
