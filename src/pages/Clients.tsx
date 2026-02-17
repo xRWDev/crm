@@ -4,7 +4,6 @@ import { createPortal } from "react-dom";
 import {
   ArrowDown,
   ArrowUp,
-  Calendar,
   CalendarClock,
   BadgeDollarSign,
   ChevronDown,
@@ -39,7 +38,7 @@ import {
   CheckCircle2,
   X,
 } from "lucide-react";
-import { addDays, addHours, format, isAfter, isBefore, isSameDay, parseISO, setHours, setMinutes } from "date-fns";
+import { addDays, format, isAfter, isBefore, isSameDay, parseISO, setHours, setMinutes } from "date-fns";
 import { ru } from "date-fns/locale";
 import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
@@ -273,8 +272,7 @@ const columnsOrderDefault = [
   "city",
   "email",
   "website",
-  "clientType",
-  "lastCommunicationAt",
+  "communication",
   "lastComment",
   "activityType",
   "productCategory",
@@ -290,8 +288,7 @@ const columnLabels: Record<ColumnKey, string> = {
   city: "Город",
   email: "Почта",
   website: "Сайт",
-  clientType: "Статус",
-  lastCommunicationAt: "Последняя коммуникация",
+  communication: "Коммуникация",
   lastComment: "Комментарий",
   activityType: "Вид деятельности",
   productCategory: "Продукция",
@@ -411,12 +408,6 @@ const formatDayLabel = (value?: Date | string | null) => {
 const formatClockTime = (value?: Date | string | null) => {
   const date = toDate(value);
   return date ? format(date, "H:mm") : "—";
-};
-
-const formatShortClockTime = (value?: Date | string | null) => {
-  const date = toDate(value);
-  if (!date) return "—";
-  return date.getMinutes() === 0 ? format(date, "H") : format(date, "H:mm");
 };
 
 const formatAmount = (value?: number | null) => {
@@ -721,8 +712,7 @@ const ClientsPage = () => {
       city: true,
       email: true,
       website: true,
-      clientType: true,
-      lastCommunicationAt: true,
+      communication: true,
       lastComment: true,
       activityType: true,
       productCategory: true,
@@ -1020,42 +1010,70 @@ const ClientsPage = () => {
         size: 70,
       },
         {
-          id: "clientType",
-          accessorKey: "clientType",
-          header: () => <span className="table-head-text">Статус</span>,
+          id: "communication",
+          header: () => <span className="table-head-text">Коммуникация</span>,
           cell: ({ row }) => {
-            const status = row.original.status ?? "none";
+            const client = row.original;
+            const status = client.status ?? "none";
+            const note = (client.communicationNote || "").trim();
+            const communications = client.communications ?? [];
+            let primaryKind: ClientCommunicationRecord["kind"] | undefined;
+            let primaryTime: Date | null = null;
+            if (communications.length) {
+              const plannedWithTime = communications
+                .filter((item) => item.status === "planned")
+                .map((item) => ({ item, time: toDate(item.scheduledAt) }))
+                .filter((entry) => entry.time) as { item: ClientCommunicationRecord; time: Date }[];
+              plannedWithTime.sort((a, b) => a.time.getTime() - b.time.getTime());
+              const nextPlanned = plannedWithTime[0];
+
+              const closedWithTime = communications
+                .filter((item) => item.status === "closed")
+                .map((item) => ({ item, time: toDate(item.closedAt ?? item.scheduledAt) }))
+                .filter((entry) => entry.time) as { item: ClientCommunicationRecord; time: Date }[];
+              closedWithTime.sort((a, b) => b.time.getTime() - a.time.getTime());
+              const lastClosed = closedWithTime[0];
+
+              const primary =
+                status === "in_progress"
+                  ? nextPlanned ?? lastClosed
+                  : lastClosed ?? nextPlanned;
+              primaryKind = primary?.item.kind;
+              primaryTime = primary?.time ?? null;
+            }
+            const KindIcon =
+              primaryKind === "call"
+                ? PhoneCall
+                : primaryKind === "meeting"
+                ? Users
+                : MessageCircle;
+            const timeLabel =
+              primaryTime ??
+              (status === "in_progress" ? toDate(client.nextCommunicationAt ?? null) : null) ??
+              toDate(client.lastCommunicationAt ?? null);
             return (
-              <span
-                className={cn(
-                  "inline-flex min-w-max items-center whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-semibold leading-none",
-                  communicationStatusTone[status]
-                )}
-              >
-                {communicationStatusLabel[status]}
-              </span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "inline-flex min-w-max items-center whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-semibold leading-none",
+                      communicationStatusTone[status]
+                    )}
+                  >
+                    {communicationStatusLabel[status]}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs text-foreground/70 whitespace-nowrap">
+                    <KindIcon className="h-3.5 w-3.5 text-slate-400" />
+                    {formatDateTime(timeLabel)}
+                  </span>
+                </div>
+                <span className="text-xs text-muted-foreground line-clamp-2">
+                  {note || "—"}
+                </span>
+              </div>
             );
           },
         },
-        {
-          id: "lastCommunicationAt",
-          accessorKey: "lastCommunicationAt",
-          header: () => <span className="table-head-text">Последняя коммуникация</span>,
-        cell: ({ row }) => {
-          const client = row.original;
-          const note = (client.communicationNote || "").trim();
-          return (
-            <div className="flex flex-col gap-1">
-              <span className="text-sm text-foreground/80 whitespace-nowrap">
-                {formatDate(client.lastCommunicationAt ?? null)}
-              </span>
-              <span className="text-xs text-muted-foreground line-clamp-2">
-                {note || "—"}
-              </span>
-            </div>
-          );
-        },
-      },
         {
           id: "lastComment",
           accessorKey: "lastComment",
@@ -3078,55 +3096,24 @@ const ClientDetailSheet = ({
     )[0]!;
   }, [communications]);
 
-  const meetingNoteText = (nextPlannedCommunication?.note || "").trim();
-  const meetingTodoItems = useMemo(() => {
-    if (!meetingNoteText) return [];
-    return meetingNoteText
-      .split(/\n+/)
-      .flatMap((line) => line.split(/[.!?]+/))
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .slice(0, 3);
-  }, [meetingNoteText]);
-
-  const communicationTodoItems = useMemo(() => {
-    const text = (draft.communicationNote || "").trim();
-    if (!text) return [];
-    if (meetingNoteText && text === meetingNoteText) return [];
-    return text
-      .split(/\n+/)
-      .flatMap((line) => line.split(/[.!?]+/))
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .slice(0, 3);
-  }, [draft.communicationNote, meetingNoteText]);
-
-  const nextCommunicationDate = toDate(
-    nextPlannedCommunication?.scheduledAt ?? draft.nextCommunicationAt ?? null
-  );
-  const nextCommunicationKind = nextPlannedCommunication?.kind;
-  const nextCommunicationKindLabel =
-    nextCommunicationKind === "meeting"
-      ? "Встреча"
-      : nextCommunicationKind === "call"
-      ? "Звонок"
-      : "Коммуникация";
-  const nextCommunicationQuestionsLabel =
-    nextCommunicationKind === "call"
-      ? "Вопросы к звонку"
-      : nextCommunicationKind === "meeting"
-      ? "Вопросы к встрече"
-      : "Вопросы к коммуникации";
-  const nextCommunicationRelativeLabel = nextCommunicationDate
-    ? isSameDay(nextCommunicationDate, new Date())
-      ? "сегодня"
-      : isSameDay(nextCommunicationDate, addDays(new Date(), 1))
-      ? "завтра"
-      : format(nextCommunicationDate, "dd.MM.yyyy")
-    : "";
-  const nextCommunicationPill = nextCommunicationDate
-    ? `${nextCommunicationKindLabel} ${nextCommunicationRelativeLabel} с ${formatShortClockTime(nextCommunicationDate)} до ${formatShortClockTime(addHours(nextCommunicationDate, 2))}`
-    : "Коммуникация не запланирована";
+  const primaryCommunication = nextPlannedCommunication ?? sortedCommunications[0] ?? null;
+  const primaryCommunicationDate = toDate(primaryCommunication?.scheduledAt ?? null);
+  const primaryCommunicationStatusLabel = primaryCommunication
+    ? primaryCommunication.status === "planned"
+      ? "Запланирована"
+      : primaryCommunication.result === "success"
+      ? "Завершено удачно"
+      : "Завершено неудачно"
+    : "Без коммуникации";
+  const primaryCommunicationStatusClass = primaryCommunication
+    ? primaryCommunication.status === "planned"
+      ? "bg-amber-100 text-amber-700"
+      : primaryCommunication.result === "success"
+      ? "bg-emerald-100 text-emerald-700"
+      : "bg-rose-100 text-rose-700"
+    : "bg-slate-100 text-slate-500";
+  const primaryCommunicationNote = (primaryCommunication?.note || "").trim();
+  const hasCommunications = Boolean(primaryCommunication);
 
   const chatTimeline = useMemo(() => {
     // Newest -> oldest (latest on top)
@@ -3734,6 +3721,7 @@ const ClientDetailSheet = ({
                               <th className="px-3 py-2.5 text-left">Ед. измерения</th>
                               <th className="px-3 py-2.5 text-left">Кол-во</th>
                               <th className="px-3 py-2.5 text-left">Цена</th>
+                              <th className="px-3 py-2.5 text-left">Сума</th>
                               <th className="px-3 py-2.5 text-left">Документы</th>
                               <th className="px-3 py-2.5 text-left">№ Дек, почты</th>
                               <th className="px-3 py-2.5 text-left">Комментарии</th>
@@ -3779,6 +3767,7 @@ const ClientDetailSheet = ({
                                     <td className="px-3 py-2 text-xs text-muted-foreground">{deal.unit}</td>
                                     <td className="px-3 py-2 text-sm">{formatAmount(deal.qty)}</td>
                                     <td className="px-3 py-2 text-sm">{formatAmount(deal.price)}</td>
+                                    <td className="px-3 py-2 text-sm">{formatAmount(deal.amount)}</td>
                                     <td className="px-3 py-2">
                                       {renderDealDocuments(deal.documents)}
                                     </td>
@@ -3812,7 +3801,7 @@ const ClientDetailSheet = ({
                               })
                             ) : (
                               <tr>
-                                <td colSpan={11} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                                <td colSpan={12} className="px-3 py-10 text-center text-sm text-muted-foreground">
                                   Просчетов пока нет.
                                 </td>
                               </tr>
@@ -3830,161 +3819,283 @@ const ClientDetailSheet = ({
                           size="sm"
                           variant="secondary"
                           className="clients-add-btn h-8 px-3 text-xs"
-                          onClick={() =>
-                            setDealFormOpen((prev) => {
-                              const next = !prev;
-                              if (next) {
-                                setEditingDealId(null);
-                                setDealForm(buildEmptyDealForm("deal"));
-                              }
-                              return next;
-                            })
-                          }
+                          onClick={() => {
+                            setEditingDealId(null);
+                            setDealForm(buildEmptyDealForm("deal"));
+                            setDealFormOpen(true);
+                          }}
                         >
                           Добавить +
                         </Button>
                       </div>
                     )}
 
-                    {isEditing && dealFormOpen && (
-                      <div className="rounded-[4px] border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <Input
-                            type="date"
-                            className="h-9"
-                            value={dealForm.createdAt}
-                            onChange={(event) =>
-                              setDealForm((prev) => ({ ...prev, createdAt: event.target.value }))
-                            }
-                          />
-                          <Input
-                            className="h-9"
-                            placeholder="Наименование"
-                            value={dealForm.title}
-                            onChange={(event) =>
-                              setDealForm((prev) => ({ ...prev, title: event.target.value }))
-                            }
-                          />
-                          <Input
-                            className="h-9"
-                            placeholder="Ед. измерения"
-                            value={dealForm.unit}
-                            onChange={(event) =>
-                              setDealForm((prev) => ({ ...prev, unit: event.target.value }))
-                            }
-                          />
-                          <Input
-                            className="h-9"
-                            placeholder="Количество"
-                            value={dealForm.qty}
-                            onChange={(event) =>
-                              setDealForm((prev) => ({ ...prev, qty: event.target.value }))
-                            }
-                          />
-                          <Input
-                            className="h-9"
-                            placeholder="Цена"
-                            value={dealForm.price}
-                            onChange={(event) =>
-                              setDealForm((prev) => ({ ...prev, price: event.target.value }))
-                            }
-                          />
-                          <Input
-                            className="h-9"
-                            placeholder="Сумма"
-                            value={dealForm.amount}
-                            onChange={(event) =>
-                              setDealForm((prev) => ({ ...prev, amount: event.target.value }))
-                            }
-                          />
-                          <Input
-                            className="h-9"
-                            placeholder="Номер декларации"
-                            value={dealForm.declarationNumber}
-                            onChange={(event) =>
-                              setDealForm((prev) => ({ ...prev, declarationNumber: event.target.value }))
-                            }
-                          />
-                          <Input
-                            className="h-9"
-                            placeholder="Получатель"
-                            value={dealForm.recipientName}
-                            onChange={(event) =>
-                              setDealForm((prev) => ({ ...prev, recipientName: event.target.value }))
-                            }
-                          />
-                          <Input
-                            className="h-9"
-                            placeholder="Телефон получателя"
-                            value={dealForm.recipientPhone}
-                            onChange={(event) =>
-                              setDealForm((prev) => ({ ...prev, recipientPhone: event.target.value }))
-                            }
-                          />
-                          <Input
-                            className="h-9"
-                            placeholder="Город получателя"
-                            value={dealForm.recipientCity}
-                            onChange={(event) =>
-                              setDealForm((prev) => ({ ...prev, recipientCity: event.target.value }))
-                            }
-                          />
-                          <Input
-                            className="h-9"
-                            placeholder="Отделение"
-                            value={dealForm.recipientOffice}
-                            onChange={(event) =>
-                              setDealForm((prev) => ({ ...prev, recipientOffice: event.target.value }))
-                            }
-                          />
-                          <div className="space-y-2">
-                            <Input
-                              className="h-9"
-                              placeholder="Документы (через запятую)"
-                              value={dealForm.documents}
-                              onChange={(event) =>
-                                setDealForm((prev) => ({ ...prev, documents: event.target.value }))
-                              }
-                              onDragOver={(event) => event.preventDefault()}
-                              onDrop={handleDealFilesDrop}
-                            />
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <input
-                                ref={dealFileInputRef}
-                                type="file"
-                                multiple
-                                className="hidden"
-                                onChange={handleDealFilesChange}
-                              />
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 px-2 text-xs"
-                                onClick={() => dealFileInputRef.current?.click()}
-                              >
-                                Загрузить
-                              </Button>
+                    {isEditing && (
+                      <Dialog
+                        open={dealFormOpen}
+                        onOpenChange={(next) => {
+                          if (!next) {
+                            handleCancelDealForm();
+                            return;
+                          }
+                          setDealFormOpen(true);
+                        }}
+                      >
+                        <DialogContent className="deal-form-dialog flex h-[92vh] w-[min(92vw,1200px)] max-w-none flex-col gap-0 overflow-hidden rounded-[18px] border border-slate-200/70 bg-slate-50 p-0">
+                          <DialogHeader className="border-b border-slate-200/70 bg-white px-5 py-3">
+                            <DialogTitle className="text-lg font-semibold">
+                              {editingDealId ? "Редактировать сделку" : "Новая сделка"}
+                            </DialogTitle>
+                            <p className="text-xs text-slate-500">
+                              Заполните основные данные, доставку и документы.
+                            </p>
+                          </DialogHeader>
+                          <div className="flex-1 overflow-hidden px-5 py-4">
+                            <div className="deal-form-grid grid h-full gap-3 lg:grid-cols-2">
+                              <div className="deal-form-section" data-tone="sky">
+                                <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide deal-form-title">
+                                  <span className="deal-form-icon">
+                                    <CalendarClock className="h-4 w-4" />
+                                  </span>
+                                  Основное
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-12">
+                                  <div className="deal-form-field space-y-1.5 md:col-span-4">
+                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                      Дата
+                                    </div>
+                                    <Input
+                                      type="date"
+                                      className="h-10"
+                                      value={dealForm.createdAt}
+                                      onChange={(event) =>
+                                        setDealForm((prev) => ({ ...prev, createdAt: event.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="deal-form-field space-y-1.5 md:col-span-8">
+                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                      Наименование
+                                    </div>
+                                    <Input
+                                      className="h-10"
+                                      placeholder="Наименование"
+                                      value={dealForm.title}
+                                      onChange={(event) =>
+                                        setDealForm((prev) => ({ ...prev, title: event.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="deal-form-section" data-tone="emerald">
+                                <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide deal-form-title">
+                                  <span className="deal-form-icon">
+                                    <Scale className="h-4 w-4" />
+                                  </span>
+                                  Товар и сумма
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-12">
+                                  <div className="deal-form-field space-y-1.5 md:col-span-6">
+                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                      Ед. измерения
+                                    </div>
+                                    <Input
+                                      className="h-10"
+                                      placeholder="Ед. измерения"
+                                      value={dealForm.unit}
+                                      onChange={(event) =>
+                                        setDealForm((prev) => ({ ...prev, unit: event.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="deal-form-field space-y-1.5 md:col-span-6">
+                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                      Количество
+                                    </div>
+                                    <Input
+                                      className="h-10"
+                                      placeholder="Количество"
+                                      value={dealForm.qty}
+                                      onChange={(event) =>
+                                        setDealForm((prev) => ({ ...prev, qty: event.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="deal-form-field space-y-1.5 md:col-span-6">
+                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                      Цена
+                                    </div>
+                                    <Input
+                                      className="h-10"
+                                      placeholder="Цена"
+                                      value={dealForm.price}
+                                      onChange={(event) =>
+                                        setDealForm((prev) => ({ ...prev, price: event.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="deal-form-field space-y-1.5 md:col-span-6">
+                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                      Сума
+                                    </div>
+                                    <Input
+                                      className="h-10"
+                                      placeholder="Сума"
+                                      value={dealForm.amount}
+                                      onChange={(event) =>
+                                        setDealForm((prev) => ({ ...prev, amount: event.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="deal-form-section" data-tone="amber">
+                                <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide deal-form-title">
+                                  <span className="deal-form-icon">
+                                    <Truck className="h-4 w-4" />
+                                  </span>
+                                  Доставка
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-12">
+                                  <div className="deal-form-field space-y-1.5 md:col-span-7">
+                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                      Номер декларации
+                                    </div>
+                                    <Input
+                                      className="h-10"
+                                      placeholder="Номер декларации"
+                                      value={dealForm.declarationNumber}
+                                      onChange={(event) =>
+                                        setDealForm((prev) => ({ ...prev, declarationNumber: event.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="deal-form-field space-y-1.5 md:col-span-5">
+                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                      Получатель
+                                    </div>
+                                    <Input
+                                      className="h-10"
+                                      placeholder="Получатель"
+                                      value={dealForm.recipientName}
+                                      onChange={(event) =>
+                                        setDealForm((prev) => ({ ...prev, recipientName: event.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="deal-form-field space-y-1.5 md:col-span-6">
+                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                      Телефон получателя
+                                    </div>
+                                    <Input
+                                      className="h-10"
+                                      placeholder="Телефон получателя"
+                                      value={dealForm.recipientPhone}
+                                      onChange={(event) =>
+                                        setDealForm((prev) => ({ ...prev, recipientPhone: event.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="deal-form-field space-y-1.5 md:col-span-6">
+                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                      Город получателя
+                                    </div>
+                                    <Input
+                                      className="h-10"
+                                      placeholder="Город получателя"
+                                      value={dealForm.recipientCity}
+                                      onChange={(event) =>
+                                        setDealForm((prev) => ({ ...prev, recipientCity: event.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="deal-form-field space-y-1.5 md:col-span-12">
+                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                      Отделение
+                                    </div>
+                                    <Input
+                                      className="h-10"
+                                      placeholder="Отделение"
+                                      value={dealForm.recipientOffice}
+                                      onChange={(event) =>
+                                        setDealForm((prev) => ({ ...prev, recipientOffice: event.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="deal-form-section" data-tone="slate">
+                                <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide deal-form-title">
+                                  <span className="deal-form-icon">
+                                    <FileText className="h-4 w-4" />
+                                  </span>
+                                  Документы и комментарий
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-12">
+                                  <div className="deal-form-field space-y-2 md:col-span-12">
+                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                      Документы
+                                    </div>
+                                    <Input
+                                      className="h-10"
+                                      placeholder="Документы (через запятую)"
+                                      value={dealForm.documents}
+                                      onChange={(event) =>
+                                        setDealForm((prev) => ({ ...prev, documents: event.target.value }))
+                                      }
+                                      onDragOver={(event) => event.preventDefault()}
+                                      onDrop={handleDealFilesDrop}
+                                    />
+                                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                                      <input
+                                        ref={dealFileInputRef}
+                                        type="file"
+                                        multiple
+                                        className="hidden"
+                                        onChange={handleDealFilesChange}
+                                      />
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        className="h-7 bg-sky-500 px-2 text-xs text-white hover:bg-sky-600"
+                                        onClick={() => dealFileInputRef.current?.click()}
+                                      >
+                                        Загрузить
+                                      </Button>
+                                      <span>Перетащите файлы сюда или нажмите кнопку</span>
+                                    </div>
+                                  </div>
+                                  <div className="deal-form-field space-y-1.5 md:col-span-12">
+                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                      Комментарий
+                                    </div>
+                                    <Input
+                                      className="h-10"
+                                      placeholder="Комментарий"
+                                      value={dealForm.comment}
+                                      onChange={(event) =>
+                                        setDealForm((prev) => ({ ...prev, comment: event.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                          <Input
-                            className="h-9"
-                            placeholder="Комментарий"
-                            value={dealForm.comment}
-                            onChange={(event) =>
-                              setDealForm((prev) => ({ ...prev, comment: event.target.value }))
-                            }
-                          />
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Button size="sm" onClick={handleSaveDeal}>
-                            {editingDealId ? "Сохранить" : "Добавить"}
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={handleCancelDealForm}>
-                            Отмена
-                          </Button>
-                        </div>
-                      </div>
+                          <DialogFooter className="border-t border-slate-200/70 bg-white px-5 py-3 sm:justify-start">
+                            <Button size="sm" onClick={handleSaveDeal}>
+                              {editingDealId ? "Сохранить" : "Добавить"}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={handleCancelDealForm}>
+                              Отмена
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
                     )}
 
                     <div className="overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -3999,6 +4110,7 @@ const ClientDetailSheet = ({
                             <th className="px-3 py-2 text-left">Ед. измерения</th>
                             <th className="px-3 py-2 text-left">Кол-во</th>
                             <th className="px-3 py-2 text-left">Цена</th>
+                            <th className="px-3 py-2 text-left">Сума</th>
                             <th className="px-3 py-2 text-left">Документы</th>
                             <th className="px-3 py-2 text-left">№ Дек, почты</th>
                             <th className="px-3 py-2 text-left">Комментарии</th>
@@ -4010,7 +4122,7 @@ const ClientDetailSheet = ({
                             dealsList.map((deal, index) => {
                               const variant = index % 3;
                               const statusLabel =
-                                variant === 0 ? "Проектно" : variant === 1 ? "Новый" : "Отказ";
+                                variant === 0 ? "В роботі" : variant === 1 ? "Завершено" : "Відмова";
                               const statusTone =
                                 variant === 0
                                   ? "bg-amber-500"
@@ -4044,6 +4156,7 @@ const ClientDetailSheet = ({
                                   <td className="px-3 py-2 text-xs text-muted-foreground">{deal.unit}</td>
                                   <td className="px-3 py-2 text-sm">{formatAmount(deal.qty)}</td>
                                   <td className="px-3 py-2 text-sm">{formatAmount(deal.price)}</td>
+                                  <td className="px-3 py-2 text-sm">{formatAmount(deal.amount)}</td>
                                   <td className="px-3 py-2">
                                     {renderDealDocuments(deal.documents)}
                                   </td>
@@ -4084,21 +4197,14 @@ const ClientDetailSheet = ({
                                           <Trash2 className="h-4 w-4" />
                                         </button>
                                       </div>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        className="h-7 rounded-md border border-slate-200/70 bg-white px-3 text-[12px] font-semibold text-slate-700 transition hover:bg-slate-50"
-                                      >
-                                        Одобрить
-                                      </button>
-                                    )}
+                                    ) : null}
                                   </td>
                                 </tr>
                               );
                             })
                           ) : (
                             <tr>
-                              <td colSpan={11} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                              <td colSpan={12} className="px-3 py-10 text-center text-sm text-muted-foreground">
                                 Сделок пока нет.
                               </td>
                             </tr>
@@ -4353,19 +4459,28 @@ const ClientDetailSheet = ({
                   title="Коммуникация"
                   className="comm-card animate-fade-up"
                   titleAddon={
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className={cn(
-                        "h-7 px-3 text-xs",
-                        commFormOpen
-                          ? "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700"
-                          : "clients-add-btn"
-                      )}
-                      onClick={() => setCommFormOpen((prev) => !prev)}
-                    >
-                      {commFormOpen ? "Отмена" : "Добавить +"}
-                    </Button>
+                    commFormOpen ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={cn(
+                          "h-7 px-3 text-xs",
+                          "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700"
+                        )}
+                        onClick={() => setCommFormOpen(false)}
+                      >
+                        Отмена
+                      </Button>
+                    ) : hasCommunications ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={cn("h-7 px-3 text-xs", "clients-add-btn")}
+                        onClick={() => setCommFormOpen(true)}
+                      >
+                        Добавить
+                      </Button>
+                    ) : null
                   }
                 >
                   {commFormOpen ? (
@@ -4632,67 +4747,44 @@ const ClientDetailSheet = ({
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <div className="comm-info-pill flex items-center gap-2 rounded-[4px] px-3 py-2 text-xs">
-                        <Calendar className="h-4 w-4 text-slate-400" />
-                        <span className="truncate">{nextCommunicationPill}</span>
-                      </div>
-
-                      {nextCommunicationDate && (
-                        <div className="space-y-2">
-                          <div className="text-[11px] font-semibold text-slate-400">
-                            {nextCommunicationQuestionsLabel}
-                          </div>
-                          {meetingTodoItems.length ? (
-                            <div className="divide-y divide-slate-200/60">
-                              {meetingTodoItems.map((text, index) => (
-                                <label
-                                  key={`${index}-${text}`}
-                                  className="comm-option flex items-start gap-2 py-2 text-xs text-slate-700"
-                                >
-                                  <input type="checkbox" className="mt-0.5 h-4 w-4 accent-sky-600" />
-                                  <span className="flex-1">
-                                    {text}
-                                    <span className="mt-0.5 block text-[11px] text-slate-400">
-                                      {client.responsibleName ||
-                                        responsible?.name ||
-                                        currentUserName ||
-                                        "Менеджер"}
-                                    </span>
-                                  </span>
-                                </label>
-                              ))}
+                      {!hasCommunications ? (
+                        <div className="rounded-[10px] border border-dashed border-slate-200/70 bg-slate-50/70 px-3 py-4 text-center">
+                          <p className="text-sm font-semibold text-slate-700">Без коммуникации</p>
+                          <p className="text-xs text-slate-400">
+                            Добавьте первую коммуникацию с клиентом
+                          </p>
+                          <Button
+                            size="sm"
+                            className="comm-btn-primary mt-3"
+                            onClick={() => setCommFormOpen(true)}
+                          >
+                            Добавить
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="rounded-[10px] border border-slate-200/60 bg-slate-50/70 px-3 py-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="space-y-1">
+                              <p className="text-[11px] font-semibold text-slate-400">Дата и время</p>
+                              <p className="text-sm font-semibold text-foreground">
+                                {formatDateTime(primaryCommunicationDate)}
+                              </p>
                             </div>
-                          ) : meetingNoteText ? (
-                            <p className="text-xs text-slate-700">{meetingNoteText}</p>
-                          ) : (
-                            <p className="text-xs text-muted-foreground">Задач нет.</p>
-                          )}
+                            <span
+                              className={cn(
+                                "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                                primaryCommunicationStatusClass
+                              )}
+                            >
+                              {primaryCommunicationStatusLabel}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-[11px] font-semibold text-slate-400">Короткий текст</p>
+                          <p className="comm-summary-note mt-1 text-xs text-slate-700">
+                            {primaryCommunicationNote || "Без заметки"}
+                          </p>
                         </div>
                       )}
-
-                      <div className="space-y-2">
-                        <div className="text-[11px] font-semibold text-slate-400">Без времени</div>
-                        {communicationTodoItems.length ? (
-                          <div className="divide-y divide-slate-200/60">
-                            {communicationTodoItems.map((text, index) => (
-                              <label
-                                key={`${index}-${text}`}
-                                className="comm-option flex items-start gap-2 py-2 text-xs text-slate-700"
-                              >
-                                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-sky-600" />
-                                <span className="flex-1">
-                                  {text}
-                                  <span className="mt-0.5 block text-[11px] text-slate-400">
-                                    {client.responsibleName || responsible?.name || currentUserName || "Менеджер"}
-                                  </span>
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">Задач нет.</p>
-                        )}
-                      </div>
                     </div>
                   )}
                 </InfoCard>
