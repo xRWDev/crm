@@ -762,11 +762,10 @@ const ClientsPage = () => {
     setMockClients((prev) => prev.map((client) => (client.id === id ? { ...client, ...data } : client)));
   };
 
-  const filteredClients = useMemo(() => {
+  const scopedClients = useMemo(() => {
     return allClients.filter((client) => {
       if (baseFilter === "favorites" && !client.starred) return false;
       if (baseFilter === "mine" && client.ownerId !== currentUserId) return false;
-      if (communicationFilter !== "all" && !filterByCommunication(client, communicationFilter)) return false;
       if (typeFilter !== "all" && client.clientType !== typeFilter) return false;
       if (activityFilter !== "all" && client.activityType !== activityFilter) return false;
       if (productFilter !== "all" && client.productCategory !== productFilter) return false;
@@ -808,7 +807,6 @@ const ClientsPage = () => {
   }, [
     allClients,
     baseFilter,
-    communicationFilter,
     typeFilter,
     activityFilter,
     productFilter,
@@ -818,6 +816,11 @@ const ClientsPage = () => {
     employeesList,
     currentUserId,
   ]);
+
+  const filteredClients = useMemo(() => {
+    if (communicationFilter === "all") return scopedClients;
+    return scopedClients.filter((client) => filterByCommunication(client, communicationFilter));
+  }, [scopedClients, communicationFilter]);
 
   const PAGE_SIZE = 50;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -836,15 +839,15 @@ const ClientsPage = () => {
       all: allClients.length,
       mine: allClients.filter((client) => client.ownerId === currentUserId).length,
       favorites: allClients.filter((client) => client.starred).length,
-      today: allClients.filter((client) => filterByCommunication(client, "today")).length,
-      overdue: allClients.filter((client) => filterByCommunication(client, "overdue")).length,
-      planned: allClients.filter((client) => filterByCommunication(client, "planned")).length,
-      none: allClients.filter((client) => filterByCommunication(client, "none")).length,
-      refused: allClients.filter((client) => filterByCommunication(client, "refused")).length,
-      in_progress: allClients.filter((client) => filterByCommunication(client, "in_progress")).length,
-      success: allClients.filter((client) => filterByCommunication(client, "success")).length,
+      today: scopedClients.filter((client) => filterByCommunication(client, "today")).length,
+      overdue: scopedClients.filter((client) => filterByCommunication(client, "overdue")).length,
+      planned: scopedClients.filter((client) => filterByCommunication(client, "planned")).length,
+      none: scopedClients.filter((client) => filterByCommunication(client, "none")).length,
+      refused: scopedClients.filter((client) => filterByCommunication(client, "refused")).length,
+      in_progress: scopedClients.filter((client) => filterByCommunication(client, "in_progress")).length,
+      success: scopedClients.filter((client) => filterByCommunication(client, "success")).length,
     };
-  }, [allClients, employeesList, currentUserId]);
+  }, [allClients, scopedClients, currentUserId]);
 
   const activityOptions = useMemo(
     () =>
@@ -1019,6 +1022,7 @@ const ClientsPage = () => {
             const communications = client.communications ?? [];
             let primaryKind: ClientCommunicationRecord["kind"] | undefined;
             let primaryTime: Date | null = null;
+            let refusalLabel = "";
             if (communications.length) {
               const plannedWithTime = communications
                 .filter((item) => item.status === "planned")
@@ -1033,6 +1037,10 @@ const ClientsPage = () => {
                 .filter((entry) => entry.time) as { item: ClientCommunicationRecord; time: Date }[];
               closedWithTime.sort((a, b) => b.time.getTime() - a.time.getTime());
               const lastClosed = closedWithTime[0];
+              if (lastClosed?.item.result === "failed" && lastClosed.item.reason) {
+                refusalLabel =
+                  communicationReasonLabel[lastClosed.item.reason] ?? lastClosed.item.reason;
+              }
 
               const primary =
                 status === "in_progress"
@@ -1051,6 +1059,12 @@ const ClientsPage = () => {
               primaryTime ??
               (status === "in_progress" ? toDate(client.nextCommunicationAt ?? null) : null) ??
               toDate(client.lastCommunicationAt ?? null);
+            const refusalNote = refusalLabel ? `Отказ: ${refusalLabel}` : "";
+            const noteValue = refusalNote
+              ? note
+                ? `${note} · ${refusalNote}`
+                : refusalNote
+              : note;
             return (
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
@@ -1068,7 +1082,7 @@ const ClientsPage = () => {
                   </span>
                 </div>
                 <span className="text-xs text-muted-foreground line-clamp-2">
-                  {note || "—"}
+                  {noteValue || "—"}
                 </span>
               </div>
             );
@@ -2861,10 +2875,18 @@ const ClientDetailSheet = ({
 
     const lastClosedNote = (lastClosed?.note ?? "").trim();
     const nextPlannedNote = (nextPlanned?.note ?? "").trim();
-    const note =
+    const refusalReasonLabel =
+      lastClosed?.result === "failed" && lastClosed.reason
+        ? communicationReasonLabel[lastClosed.reason] ?? lastClosed.reason
+        : "";
+    const refusalNote = refusalReasonLabel ? `Отказ: ${refusalReasonLabel}` : "";
+    let note =
       status === "in_progress"
         ? nextPlannedNote || lastClosedNote
         : lastClosedNote || nextPlannedNote;
+    if (refusalNote) {
+      note = note ? `${note} · ${refusalNote}` : refusalNote;
+    }
 
     return { next, last, status, note };
   };
@@ -2962,7 +2984,21 @@ const ClientDetailSheet = ({
     }
 
     persistCommunications([...nextItems, ...communications], noteValue);
-    toast({ title: "Коммуникация сохранена", description: commStatus === "success" ? "Завершено удачно" : "Завершено неудачно" });
+    if (commStatus === "failed" && commFailReason) {
+      const reasonLabel = communicationReasonLabel[commFailReason] ?? commFailReason;
+      const nextComment = {
+        id: `comment-${Date.now()}`,
+        text: `Отказ: ${reasonLabel}`,
+        createdAt: new Date(),
+        authorId: currentUserId,
+        authorName: currentUserName,
+      };
+      persistComments([nextComment, ...comments]);
+    }
+    toast({
+      title: "Коммуникация сохранена",
+      description: commStatus === "success" ? "Завершено удачно" : "Завершено неудачно",
+    });
   };
 
   const handleClearCommunicationForm = () => {
@@ -2987,6 +3023,7 @@ const ClientDetailSheet = ({
       toast({ title: "Укажите причину", description: "Выберите причину отказа." });
       return;
     }
+    const closedAt = new Date();
     const nextList = communications.map((item) => {
       if (item.id !== closingCommId) return item;
       return {
@@ -2994,10 +3031,21 @@ const ClientDetailSheet = ({
         status: "closed" as const,
         result: closingResult,
         reason: closingResult === "failed" ? closingReason : undefined,
-        closedAt: new Date(),
+        closedAt,
       };
     });
     persistCommunications(nextList);
+    if (closingResult === "failed" && closingReason) {
+      const reasonLabel = communicationReasonLabel[closingReason] ?? closingReason;
+      const nextComment = {
+        id: `comment-${Date.now()}`,
+        text: `Отказ: ${reasonLabel}`,
+        createdAt: closedAt,
+        authorId: currentUserId,
+        authorName: currentUserName,
+      };
+      persistComments([nextComment, ...comments]);
+    }
     setClosingCommId(null);
     setClosingResult(null);
     setClosingReason("");
