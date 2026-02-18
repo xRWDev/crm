@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Clock,
   Building2,
+  Briefcase,
   FileSpreadsheet,
   FileImage,
   FileText,
@@ -17,6 +18,7 @@ import {
   Globe,
   Mail,
   MapPin,
+  Megaphone,
   MessageCircle,
   MoreVertical,
   CornerUpLeft,
@@ -25,6 +27,7 @@ import {
   PhoneCall,
   Phone,
   Plus,
+  Package,
   Copy,
   Scale,
   Search,
@@ -136,6 +139,7 @@ type ClientRecord = {
   responsibleName?: string;
   ownerId?: string;
   ownerName?: string;
+  createdAt?: Date | string;
   starred?: boolean;
   contacts?: ClientContact[];
   comments?: {
@@ -522,6 +526,7 @@ const buildMockClients = (count: number, employees: { id: string; name: string }
     const contactCount = 3 + Math.floor(Math.random() * 2);
     const contacts = buildMockContacts(contactCount);
 
+    const createdAt = addDays(new Date(), -Math.floor(Math.random() * 365));
     result.push({
       id: `mock-${i}`,
       name: `Компания ${i + 1}`,
@@ -545,6 +550,7 @@ const buildMockClients = (count: number, employees: { id: string; name: string }
       responsibleName: responsible?.name,
       ownerId: responsible?.id,
       ownerName: responsible?.name,
+      createdAt,
       starred: randomBool(0.25),
       contacts,
       communications: [],
@@ -604,6 +610,7 @@ const mapClientFromStore = (
     responsibleName,
     ownerId: client.managerId,
     ownerName: employees.find((emp) => emp.id === client.managerId)?.name || "—",
+    createdAt: client.createdAt,
     starred: client.isFavorite ?? false,
     contacts: client.contacts,
     comments: client.comments,
@@ -624,6 +631,17 @@ const filterByCommunication = (client: ClientRecord, filter: ClientFilterKey) =>
   if (filter === "in_progress") return client.status === "in_progress";
   if (filter === "success") return client.status === "success";
   return true;
+};
+
+const sortClients = (clients: ClientRecord[]) => {
+  return [...clients].sort((a, b) => {
+    const starredDiff = Number(Boolean(b.starred)) - Number(Boolean(a.starred));
+    if (starredDiff !== 0) return starredDiff;
+    const timeA = toDate(a.createdAt)?.getTime() ?? 0;
+    const timeB = toDate(b.createdAt)?.getTime() ?? 0;
+    if (timeA !== timeB) return timeB - timeA;
+    return a.name.localeCompare(b.name);
+  });
 };
 
 const exportClientsToExcel = (clients: ClientRecord[]) => {
@@ -669,7 +687,7 @@ const ClientsPage = () => {
 
   const [mockClients, setMockClients] = useState<ClientRecord[]>([]);
   useEffect(() => {
-    setMockClients(buildMockClients(240, employeesList));
+    setMockClients(buildMockClients(0, employeesList));
   }, [employeesList]);
 
   const allClients = useMemo(() => {
@@ -680,10 +698,10 @@ const ClientsPage = () => {
   const [baseFilter, setBaseFilter] = useState<"all" | "mine" | "favorites">(
     isDirector ? "all" : "mine"
   );
-  const [communicationFilter, setCommunicationFilter] = useState<ClientFilterKey>("all");
-  const [typeFilter, setTypeFilter] = useState<ClientType | "all">("all");
+  const [communicationFilter, setCommunicationFilter] = useState<ClientFilterKey[]>([]);
+  const [typeFilter, setTypeFilter] = useState<ClientType[]>([]);
   const [activityFilter, setActivityFilter] = useState<string | "all">("all");
-  const [productFilter, setProductFilter] = useState<string | "all">("all");
+  const [productFilter, setProductFilter] = useState<string[]>([]);
   const [regionFilter, setRegionFilter] = useState<string | "all">("all");
   const [cityFilter, setCityFilter] = useState<string | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -763,10 +781,10 @@ const ClientsPage = () => {
   };
 
   const resetClientFilters = () => {
-    setCommunicationFilter("all");
-    setTypeFilter("all");
+    setCommunicationFilter([]);
+    setTypeFilter([]);
     setActivityFilter("all");
-    setProductFilter("all");
+    setProductFilter([]);
     setRegionFilter("all");
     setCityFilter("all");
     setSearchQuery("");
@@ -776,9 +794,11 @@ const ClientsPage = () => {
     return allClients.filter((client) => {
       if (baseFilter === "favorites" && !client.starred) return false;
       if (baseFilter === "mine" && client.ownerId !== currentUserId) return false;
-      if (typeFilter !== "all" && client.clientType !== typeFilter) return false;
+      if (typeFilter.length && (!client.clientType || !typeFilter.includes(client.clientType))) {
+        return false;
+      }
       if (activityFilter !== "all" && client.activityType !== activityFilter) return false;
-      if (productFilter !== "all" && client.productCategory !== productFilter) return false;
+      if (productFilter.length && !productFilter.includes(client.productCategory ?? "")) return false;
       if (regionFilter !== "all" && client.region !== regionFilter) return false;
       if (cityFilter !== "all" && client.city !== cityFilter) return false;
 
@@ -828,8 +848,13 @@ const ClientsPage = () => {
   ]);
 
   const filteredClients = useMemo(() => {
-    if (communicationFilter === "all") return scopedClients;
-    return scopedClients.filter((client) => filterByCommunication(client, communicationFilter));
+    const next =
+      communicationFilter.length === 0
+        ? scopedClients
+        : scopedClients.filter((client) =>
+            communicationFilter.some((filter) => filterByCommunication(client, filter))
+          );
+    return sortClients(next);
   }, [scopedClients, communicationFilter]);
 
   const PAGE_SIZE = 50;
@@ -1386,7 +1411,13 @@ const ClientsPage = () => {
                 { key: "success", label: "Завершен удачно", count: counts.success },
               ]}
               activeKey={communicationFilter}
-              onSelect={(key) => setCommunicationFilter(key as ClientFilterKey)}
+              onSelect={(key) =>
+                setCommunicationFilter((prev) =>
+                  prev.includes(key as ClientFilterKey)
+                    ? prev.filter((item) => item !== (key as ClientFilterKey))
+                    : [...prev, key as ClientFilterKey]
+                )
+              }
             />
 
             <AccordionGroup
@@ -1398,7 +1429,13 @@ const ClientsPage = () => {
                 count: allClients.filter((client) => client.clientType === type).length,
               }))}
               activeKey={typeFilter}
-              onSelect={(key) => setTypeFilter(key as ClientType)}
+              onSelect={(key) =>
+                setTypeFilter((prev) =>
+                  prev.includes(key as ClientType)
+                    ? prev.filter((item) => item !== (key as ClientType))
+                    : [...prev, key as ClientType]
+                )
+              }
             />
 
             <AccordionGroup
@@ -1422,7 +1459,13 @@ const ClientsPage = () => {
                 count: allClients.filter((client) => client.productCategory === option).length,
               }))}
               activeKey={productFilter}
-              onSelect={(key) => setProductFilter(key as string)}
+              onSelect={(key) =>
+                setProductFilter((prev) =>
+                  prev.includes(key)
+                    ? prev.filter((item) => item !== key)
+                    : [...prev, key]
+                )
+              }
             />
 
             <AccordionGroup
@@ -1977,7 +2020,7 @@ const AccordionGroup = ({
   title: string;
   icon: typeof Users;
   items: { key: string; label: string; count: number }[];
-  activeKey: string | "all";
+  activeKey: string | "all" | string[];
   onSelect: (key: string) => void;
 }) => {
   const [open, setOpen] = useState(false);
@@ -1995,7 +2038,7 @@ const AccordionGroup = ({
           {items.map((item) => (
             <FilterRow
               key={item.key}
-              active={activeKey === item.key}
+              active={Array.isArray(activeKey) ? activeKey.includes(item.key) : activeKey === item.key}
               icon={Users}
               label={item.label}
               count={item.count}
@@ -2007,6 +2050,19 @@ const AccordionGroup = ({
     </div>
   );
 };
+
+const FieldWithIcon = ({
+  icon: Icon,
+  children,
+}: {
+  icon: typeof Users;
+  children: ReactNode;
+}) => (
+  <div className="relative">
+    <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+    {children}
+  </div>
+);
 
 const ColumnManager = ({
   columnOrder,
@@ -2086,11 +2142,16 @@ const AddClientDialog = ({
     clientType: "client" as ClientType,
     sourceChannel: "",
   });
-  const [contacts, setContacts] = useState<
-    { id: string; fullName: string; role: string; phones: string; emails: string }[]
-  >([
-    { id: "contact-1", fullName: "", role: "", phones: "", emails: "" },
-  ]);
+  const createEmptyContact = (id?: string) => ({
+    id: id ?? `contact-${Date.now()}`,
+    fullName: "",
+    role: "",
+    phones: [] as string[],
+    emails: [] as string[],
+    phoneInput: "",
+    emailInput: "",
+  });
+  const [contacts, setContacts] = useState(() => [createEmptyContact("contact-1")]);
   const safeActivities = activityOptions.length ? activityOptions : MOCK_ACTIVITIES;
   const safeProducts = productOptions.length ? productOptions : MOCK_PRODUCTS;
   const safeRegions = regionOptions.length ? regionOptions : MOCK_REGIONS;
@@ -2108,6 +2169,46 @@ const AddClientDialog = ({
     [directorySourceChannels, form.sourceChannel]
   );
 
+  const updateContact = (id: string, updater: (contact: typeof contacts[number]) => typeof contacts[number]) => {
+    setContacts((prev) => prev.map((contact) => (contact.id === id ? updater(contact) : contact)));
+  };
+
+  const addContactPhone = (id: string) => {
+    updateContact(id, (contact) => {
+      const value = contact.phoneInput.trim();
+      if (!value) return contact;
+      if (contact.phones.includes(value)) {
+        return { ...contact, phoneInput: "" };
+      }
+      return { ...contact, phones: [...contact.phones, value], phoneInput: "" };
+    });
+  };
+
+  const addContactEmail = (id: string) => {
+    updateContact(id, (contact) => {
+      const value = contact.emailInput.trim();
+      if (!value) return contact;
+      if (contact.emails.includes(value)) {
+        return { ...contact, emailInput: "" };
+      }
+      return { ...contact, emails: [...contact.emails, value], emailInput: "" };
+    });
+  };
+
+  const removeContactPhone = (id: string, phone: string) => {
+    updateContact(id, (contact) => ({
+      ...contact,
+      phones: contact.phones.filter((item) => item !== phone),
+    }));
+  };
+
+  const removeContactEmail = (id: string, email: string) => {
+    updateContact(id, (contact) => ({
+      ...contact,
+      emails: contact.emails.filter((item) => item !== email),
+    }));
+  };
+
   useEffect(() => {
     if (!open) {
       setForm({
@@ -2121,7 +2222,7 @@ const AddClientDialog = ({
         clientType: "client",
         sourceChannel: "",
       });
-      setContacts([{ id: "contact-1", fullName: "", role: "", phones: "", emails: "" }]);
+      setContacts([createEmptyContact("contact-1")]);
     }
   }, [open]);
 
@@ -2132,184 +2233,301 @@ const AddClientDialog = ({
           <DialogTitle>Добавить клиента</DialogTitle>
         </DialogHeader>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input
-            placeholder="Название"
-            value={form.name}
-            onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-          />
-          <Select value={form.region} onValueChange={(value) => setForm((prev) => ({ ...prev, region: value }))}>
-            <SelectTrigger>
-              <SelectValue placeholder="Область" />
-            </SelectTrigger>
-            <SelectContent>
+          <FieldWithIcon icon={User}>
+            <Input
+              className="pl-10"
+              placeholder="Название"
+              value={form.name}
+              onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+            />
+          </FieldWithIcon>
+          <div className="space-y-1">
+            <FieldWithIcon icon={MapPin}>
+              <Input
+                className="pl-10"
+                placeholder="Область"
+                value={form.region}
+                list="add-client-region-options"
+                onChange={(event) => setForm((prev) => ({ ...prev, region: event.target.value }))}
+              />
+            </FieldWithIcon>
+            <datalist id="add-client-region-options">
               {safeRegions.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
+                <option key={option} value={option} />
               ))}
-            </SelectContent>
-          </Select>
-          <Select value={form.city} onValueChange={(value) => setForm((prev) => ({ ...prev, city: value }))}>
-            <SelectTrigger>
-              <SelectValue placeholder="Город" />
-            </SelectTrigger>
-            <SelectContent>
-              {safeCities.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={form.activityType}
-            onValueChange={(value) => setForm((prev) => ({ ...prev, activityType: value }))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Вид деятельности" />
-            </SelectTrigger>
-            <SelectContent>
-              {safeActivities.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={form.productCategory}
-            onValueChange={(value) => setForm((prev) => ({ ...prev, productCategory: value }))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Продукция" />
-            </SelectTrigger>
-            <SelectContent>
-              {safeProducts.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            placeholder="Почта"
-            value={form.email}
-            onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
-          />
-          <Input
-            placeholder="Сайт"
-            value={form.website}
-            onChange={(event) => setForm((prev) => ({ ...prev, website: event.target.value }))}
-          />
-          <Select
-            value={form.sourceChannel}
-            onValueChange={(value) => setForm((prev) => ({ ...prev, sourceChannel: value }))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Канал привлечения" />
-            </SelectTrigger>
-            <SelectContent>
-              {sourceChannelOptions.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={form.clientType}
-            onValueChange={(value) => setForm((prev) => ({ ...prev, clientType: value as ClientType }))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Тип клиента" />
-            </SelectTrigger>
-            <SelectContent>
-              {CLIENT_TYPES.map((type) => (
-                <SelectItem key={type} value={type}>
-                  {clientTypeLabel[type]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            </datalist>
+          </div>
+          <FieldWithIcon icon={Building2}>
+            <Select value={form.city} onValueChange={(value) => setForm((prev) => ({ ...prev, city: value }))}>
+              <SelectTrigger className="pl-10">
+                <SelectValue placeholder="Город" />
+              </SelectTrigger>
+              <SelectContent>
+                {safeCities.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FieldWithIcon>
+          <FieldWithIcon icon={Briefcase}>
+            <Select
+              value={form.activityType}
+              onValueChange={(value) => setForm((prev) => ({ ...prev, activityType: value }))}
+            >
+              <SelectTrigger className="pl-10">
+                <SelectValue placeholder="Вид деятельности" />
+              </SelectTrigger>
+              <SelectContent>
+                {safeActivities.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FieldWithIcon>
+          <FieldWithIcon icon={Package}>
+            <Select
+              value={form.productCategory}
+              onValueChange={(value) => setForm((prev) => ({ ...prev, productCategory: value }))}
+            >
+              <SelectTrigger className="pl-10">
+                <SelectValue placeholder="Продукция" />
+              </SelectTrigger>
+              <SelectContent>
+                {safeProducts.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FieldWithIcon>
+          <FieldWithIcon icon={Mail}>
+            <Input
+              className="pl-10"
+              placeholder="Почта"
+              value={form.email}
+              onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
+            />
+          </FieldWithIcon>
+          <FieldWithIcon icon={Globe}>
+            <Input
+              className="pl-10"
+              placeholder="Сайт"
+              value={form.website}
+              onChange={(event) => setForm((prev) => ({ ...prev, website: event.target.value }))}
+            />
+          </FieldWithIcon>
+          <FieldWithIcon icon={Megaphone}>
+            <Select
+              value={form.sourceChannel}
+              onValueChange={(value) => setForm((prev) => ({ ...prev, sourceChannel: value }))}
+            >
+              <SelectTrigger className="pl-10">
+                <SelectValue placeholder="Канал привлечения" />
+              </SelectTrigger>
+              <SelectContent>
+                {sourceChannelOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FieldWithIcon>
+          <FieldWithIcon icon={Users}>
+            <Select
+              value={form.clientType}
+              onValueChange={(value) => setForm((prev) => ({ ...prev, clientType: value as ClientType }))}
+            >
+              <SelectTrigger className="pl-10">
+                <SelectValue placeholder="Тип клиента" />
+              </SelectTrigger>
+              <SelectContent>
+                {CLIENT_TYPES.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {clientTypeLabel[type]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FieldWithIcon>
         </div>
         <div className="mt-4 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">Контактные лица</p>
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Users className="h-4 w-4 text-primary" />
+              Контактные лица
+            </div>
             <Button
-              variant="ghost"
+              variant="secondary"
               size="sm"
+              className="gap-1"
               onClick={() =>
-                setContacts((prev) => [
-                  ...prev,
-                  { id: `contact-${Date.now()}`, fullName: "", role: "", phones: "", emails: "" },
-                ])
+                setContacts((prev) => [...prev, createEmptyContact()])
               }
             >
+              <Plus className="h-4 w-4" />
               Добавить контакт
             </Button>
           </div>
           <div className="space-y-3">
             {contacts.map((contact, index) => (
-              <div key={contact.id} className="rounded-xl border border-slate-200/60 bg-white/70 p-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <Input
-                    placeholder="ФИО"
-                    value={contact.fullName}
-                    onChange={(event) =>
-                      setContacts((prev) =>
-                        prev.map((item) =>
-                          item.id === contact.id ? { ...item, fullName: event.target.value } : item
-                        )
-                      )
-                    }
-                  />
-                  <Input
-                    placeholder="Должность"
-                    value={contact.role}
-                    onChange={(event) =>
-                      setContacts((prev) =>
-                        prev.map((item) =>
-                          item.id === contact.id ? { ...item, role: event.target.value } : item
-                        )
-                      )
-                    }
-                  />
-                  <Input
-                    placeholder="Телефоны (через запятую)"
-                    value={contact.phones}
-                    onChange={(event) =>
-                      setContacts((prev) =>
-                        prev.map((item) =>
-                          item.id === contact.id ? { ...item, phones: event.target.value } : item
-                        )
-                      )
-                    }
-                  />
-                  <Input
-                    placeholder="Emails (через запятую)"
-                    value={contact.emails}
-                    onChange={(event) =>
-                      setContacts((prev) =>
-                        prev.map((item) =>
-                          item.id === contact.id ? { ...item, emails: event.target.value } : item
-                        )
-                      )
-                    }
-                  />
-                </div>
-                {contacts.length > 1 && (
-                  <div className="mt-2 flex justify-end">
+              <div key={contact.id} className="rounded-2xl border border-slate-200/60 bg-white/70 p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">
+                    Контакт {index + 1}
+                  </p>
+                  {contacts.length > 1 && (
                     <Button
                       variant="ghost"
                       size="sm"
+                      className="gap-1 text-muted-foreground"
                       onClick={() => setContacts((prev) => prev.filter((item) => item.id !== contact.id))}
                     >
+                      <Trash2 className="h-4 w-4" />
                       Удалить
                     </Button>
+                  )}
+                </div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <FieldWithIcon icon={User}>
+                    <Input
+                      className="pl-10"
+                      placeholder="ФИО"
+                      value={contact.fullName}
+                      onChange={(event) =>
+                        updateContact(contact.id, (item) => ({ ...item, fullName: event.target.value }))
+                      }
+                    />
+                  </FieldWithIcon>
+                  <FieldWithIcon icon={Briefcase}>
+                    <Select
+                      value={contact.role}
+                      onValueChange={(value) =>
+                        updateContact(contact.id, (item) => ({ ...item, role: value }))
+                      }
+                    >
+                      <SelectTrigger className="pl-10">
+                        <SelectValue placeholder="Должность" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CONTACT_POSITIONS.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FieldWithIcon>
+                </div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <FieldWithIcon icon={Phone}>
+                        <Input
+                          className="pl-10"
+                          placeholder="Телефон"
+                          value={contact.phoneInput}
+                          onChange={(event) =>
+                            updateContact(contact.id, (item) => ({ ...item, phoneInput: event.target.value }))
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              addContactPhone(contact.id);
+                            }
+                          }}
+                        />
+                      </FieldWithIcon>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        onClick={() => addContactPhone(contact.id)}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {contact.phones.length === 0 && (
+                        <span className="text-xs text-muted-foreground">Телефоны не добавлены</span>
+                      )}
+                      {contact.phones.map((phone) => (
+                        <span
+                          key={phone}
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-600 shadow-sm"
+                        >
+                          <Phone className="h-3 w-3 text-slate-400" />
+                          {phone}
+                          <button
+                            type="button"
+                            className="text-slate-400 transition hover:text-slate-600"
+                            onClick={() => removeContactPhone(contact.id, phone)}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                )}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <FieldWithIcon icon={Mail}>
+                        <Input
+                          className="pl-10"
+                          placeholder="Email"
+                          value={contact.emailInput}
+                          onChange={(event) =>
+                            updateContact(contact.id, (item) => ({ ...item, emailInput: event.target.value }))
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              addContactEmail(contact.id);
+                            }
+                          }}
+                        />
+                      </FieldWithIcon>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        onClick={() => addContactEmail(contact.id)}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {contact.emails.length === 0 && (
+                        <span className="text-xs text-muted-foreground">Email не добавлены</span>
+                      )}
+                      {contact.emails.map((email) => (
+                        <span
+                          key={email}
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-600 shadow-sm"
+                        >
+                          <Mail className="h-3 w-3 text-slate-400" />
+                          {email}
+                          <button
+                            type="button"
+                            className="text-slate-400 transition hover:text-slate-600"
+                            onClick={() => removeContactEmail(contact.id, email)}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
                 {index === 0 && (
-                  <p className="mt-2 text-xs text-muted-foreground">Можно добавить несколько телефонов и email.</p>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Добавляйте телефоны и email через кнопку “плюс” или Enter.
+                  </p>
                 )}
               </div>
             ))}
@@ -2320,10 +2538,26 @@ const AddClientDialog = ({
             Отмена
           </Button>
           <Button
-            onClick={() =>
+            onClick={() => {
+              const normalizedContacts = contacts
+                .map((contact) => ({
+                  id: contact.id,
+                  name: contact.fullName,
+                  position: contact.role,
+                  phones: contact.phones.map((item) => item.trim()).filter(Boolean),
+                  emails: contact.emails.map((item) => item.trim()).filter(Boolean),
+                }))
+                .filter(
+                  (contact) =>
+                    contact.name ||
+                    contact.position ||
+                    contact.phones.length > 0 ||
+                    contact.emails.length > 0
+                );
+              const primaryPhone = normalizedContacts[0]?.phones?.[0] ?? "";
               onCreate({
                 name: form.name,
-                phone: contacts[0]?.phones?.split(",")[0]?.trim() || "",
+                phone: primaryPhone,
                 email: form.email,
                 addresses: [],
                 status: "new",
@@ -2343,26 +2577,14 @@ const AddClientDialog = ({
                 bonusPoints: 0,
                 responsibleId: currentUserId,
                 managerId: currentUserId,
-                contacts: contacts.map((contact) => ({
-                  id: contact.id,
-                  name: contact.fullName,
-                  position: contact.role,
-                  phones: contact.phones
-                    .split(",")
-                    .map((item) => item.trim())
-                    .filter(Boolean),
-                  emails: contact.emails
-                    .split(",")
-                    .map((item) => item.trim())
-                    .filter(Boolean),
-                })),
+                contacts: normalizedContacts,
                 communications: [],
                 deals: [],
                 comments: [],
                 allowManagerDeleteComments: false,
                 notes: "",
-              })
-            }
+              });
+            }}
             disabled={!form.name || !form.city || !form.clientType}
           >
             Создать
