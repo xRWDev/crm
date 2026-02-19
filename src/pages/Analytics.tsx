@@ -186,12 +186,18 @@ export default function Analytics() {
     [clients, directoryActivities]
   );
 
+  const splitProductCategories = (value?: string | null) =>
+    (value ?? "")
+      .split(/[,;\n]+/g)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
   const productOptions = useMemo(
     () =>
       Array.from(
         new Set([
           ...directoryProducts,
-          ...clients.map((client) => client.productCategory).filter(Boolean),
+          ...clients.flatMap((client) => splitProductCategories(client.productCategory)),
         ])
       ).filter(Boolean) as string[],
     [clients, directoryProducts]
@@ -259,7 +265,10 @@ export default function Analytics() {
     if (filters.activityType !== 'all' && client.activityType !== filters.activityType) return false;
     if (filters.region !== 'all' && client.region !== filters.region) return false;
     if (filters.city !== 'all' && client.city !== filters.city) return false;
-    if (filters.productCategory !== 'all' && client.productCategory !== filters.productCategory) return false;
+    if (filters.productCategory !== 'all') {
+      const products = splitProductCategories(client.productCategory);
+      if (!products.includes(filters.productCategory)) return false;
+    }
     if (filters.clientType !== 'all' && client.clientType !== filters.clientType) return false;
     if (filters.clientTag !== 'all' && client.status !== filters.clientTag) return false;
     if (filters.refusalReason !== 'all') {

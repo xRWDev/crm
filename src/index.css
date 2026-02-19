@@ -1336,9 +1336,9 @@
   }
 
   .deal-form-grid {
-    height: 100%;
-    align-content: stretch;
-    grid-auto-rows: minmax(0, 1fr);
+    height: auto;
+    align-content: start;
+    grid-auto-rows: minmax(0, auto);
   }
 
   .deal-form-section .deal-form-field input {

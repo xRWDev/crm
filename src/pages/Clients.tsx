@@ -420,6 +420,17 @@ const formatAmount = (value?: number | null) => {
   return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(value);
 };
 
+const splitProductCategories = (value?: string | null) =>
+  (value ?? "")
+    .split(/[,;\n]+/g)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const formatProductCategories = (value?: string | null) => {
+  const items = splitProductCategories(value);
+  return items.length ? items.join(", ") : "—";
+};
+
 const normalizeDocumentName = (value?: string) => {
   const trimmed = (value ?? "").trim();
   if (!trimmed) return "document.txt";
@@ -664,7 +675,7 @@ const exportClientsToExcel = (clients: ClientRecord[]) => {
     "Последняя коммуникация": formatDate(client.lastCommunicationAt),
     "Комментарий": client.lastComment ?? "",
     "Вид деятельности": client.activityType ?? "",
-    "Продукция": client.productCategory ?? "",
+    "Продукция": formatProductCategories(client.productCategory),
     "Ответственный": client.responsibleName ?? "",
   }));
   const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -799,7 +810,10 @@ const ClientsPage = () => {
         return false;
       }
       if (activityFilter !== "all" && client.activityType !== activityFilter) return false;
-      if (productFilter.length && !productFilter.includes(client.productCategory ?? "")) return false;
+      if (productFilter.length) {
+        const products = splitProductCategories(client.productCategory);
+        if (!productFilter.some((item) => products.includes(item))) return false;
+      }
       if (regionFilter !== "all" && client.region !== regionFilter) return false;
       if (cityFilter !== "all" && client.city !== cityFilter) return false;
 
@@ -901,7 +915,7 @@ const ClientsPage = () => {
       Array.from(
         new Set([
           ...directoryProducts,
-          ...allClients.map((client) => client.productCategory).filter(Boolean),
+          ...allClients.flatMap((client) => splitProductCategories(client.productCategory)),
         ])
       ) as string[],
     [allClients, directoryProducts]
@@ -1160,9 +1174,24 @@ const ClientsPage = () => {
           id: "productCategory",
           accessorKey: "productCategory",
           header: () => <span className="table-head-text">Продукция</span>,
-        cell: ({ getValue }) => (
-          <span className="text-sm text-foreground/80">{getValue<string>() ?? "—"}</span>
-        ),
+        cell: ({ getValue }) => {
+          const items = splitProductCategories(getValue<string>());
+          if (!items.length) {
+            return <span className="text-sm text-foreground/50">—</span>;
+          }
+          return (
+            <div className="flex flex-wrap items-center gap-1">
+              {items.map((item) => (
+                <span
+                  key={item}
+                  className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          );
+        },
       },
         {
           id: "responsibleName",
@@ -1457,7 +1486,9 @@ const ClientsPage = () => {
               items={productOptions.map((option) => ({
                 key: option,
                 label: option,
-                count: allClients.filter((client) => client.productCategory === option).length,
+                count: allClients.filter((client) =>
+                  splitProductCategories(client.productCategory).includes(option)
+                ).length,
               }))}
               activeKey={productFilter}
               onSelect={(key) =>
@@ -2153,8 +2184,7 @@ const AddClientDialog = ({
     emailInput: "",
   });
   const [contacts, setContacts] = useState(() => [createEmptyContact("contact-1")]);
-  const safeActivities = activityOptions.length ? activityOptions : MOCK_ACTIVITIES;
-  const safeProducts = productOptions.length ? productOptions : MOCK_PRODUCTS;
+  const [productItems, setProductItems] = useState<string[]>([]);
   const safeRegions = regionOptions.length ? regionOptions : MOCK_REGIONS;
   const safeCities = useMemo(() => {
     const merged = cityOptions.length ? [...cityOptions, ...UA_CITIES_RU] : [...UA_CITIES_RU];
@@ -2234,6 +2264,27 @@ const AddClientDialog = ({
     }));
   };
 
+  const addProductItem = () => {
+    const values = splitProductCategories(form.productCategory);
+    if (!values.length) return;
+    setProductItems((prev) => {
+      const existing = new Set(prev.map((item) => item.toLowerCase()));
+      const next = [...prev];
+      values.forEach((value) => {
+        if (!existing.has(value.toLowerCase())) {
+          existing.add(value.toLowerCase());
+          next.push(value);
+        }
+      });
+      return next;
+    });
+    setForm((prev) => ({ ...prev, productCategory: "" }));
+  };
+
+  const removeProductItem = (value: string) => {
+    setProductItems((prev) => prev.filter((item) => item !== value));
+  };
+
   useEffect(() => {
     if (!open) {
       setForm({
@@ -2249,6 +2300,7 @@ const AddClientDialog = ({
       });
       setContacts([createEmptyContact("contact-1")]);
       setCityOpen(false);
+      setProductItems([]);
     }
   }, [open]);
 
@@ -2258,7 +2310,7 @@ const AddClientDialog = ({
         <DialogHeader>
           <DialogTitle>Добавить клиента</DialogTitle>
         </DialogHeader>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           <FieldWithIcon icon={User}>
             <Input
               className="pl-10"
@@ -2352,14 +2404,48 @@ const AddClientDialog = ({
               onChange={(event) => setForm((prev) => ({ ...prev, activityType: event.target.value }))}
             />
           </FieldWithIcon>
-          <FieldWithIcon icon={Package}>
-            <Input
-              className="pl-10"
-              placeholder="Продукция"
-              value={form.productCategory}
-              onChange={(event) => setForm((prev) => ({ ...prev, productCategory: event.target.value }))}
-            />
-          </FieldWithIcon>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <FieldWithIcon icon={Package}>
+                <Input
+                  className="pl-10"
+                  placeholder="Продукция"
+                  value={form.productCategory}
+                  onChange={(event) => setForm((prev) => ({ ...prev, productCategory: event.target.value }))}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addProductItem();
+                    }
+                  }}
+                />
+              </FieldWithIcon>
+              <Button type="button" variant="secondary" size="icon" onClick={addProductItem}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {productItems.length === 0 && (
+                <span className="text-xs text-muted-foreground">Продукция не добавлена</span>
+              )}
+              {productItems.map((item) => (
+                <span
+                  key={item}
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-600 shadow-sm"
+                >
+                  <Package className="h-3 w-3 text-slate-400" />
+                  {item}
+                  <button
+                    type="button"
+                    className="text-slate-400 transition hover:text-slate-600"
+                    onClick={() => removeProductItem(item)}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
           <FieldWithIcon icon={Mail}>
             <Input
               className="pl-10"
@@ -2595,10 +2681,18 @@ const AddClientDialog = ({
           <Button
             variant="default"
             onClick={() => {
+              const pendingProducts = [
+                ...productItems,
+                ...splitProductCategories(form.productCategory),
+              ]
+                .map((item) => item.trim())
+                .filter(Boolean);
+              const uniqueProducts = Array.from(new Set(pendingProducts));
+
               if (form.city.trim()) addDirectoryItem("city", form.city);
               if (form.region.trim()) addDirectoryItem("region", form.region);
               if (form.activityType.trim()) addDirectoryItem("activity", form.activityType);
-              if (form.productCategory.trim()) addDirectoryItem("product", form.productCategory);
+              uniqueProducts.forEach((item) => addDirectoryItem("product", item));
               if (form.sourceChannel.trim()) addDirectoryItem("sourceChannel", form.sourceChannel);
               const normalizedContacts = contacts
                 .map((contact) => ({
@@ -2616,6 +2710,7 @@ const AddClientDialog = ({
                     contact.emails.length > 0
                 );
               const primaryPhone = normalizedContacts[0]?.phones?.[0] ?? "";
+              const productCategory = uniqueProducts.join(", ");
               onCreate({
                 name: form.name,
                 phone: primaryPhone,
@@ -2625,7 +2720,7 @@ const AddClientDialog = ({
                 region: form.region,
                 city: form.city,
                 activityType: form.activityType,
-                productCategory: form.productCategory,
+                productCategory,
                 website: form.website,
                 clientType: form.clientType,
                 sourceChannel: form.sourceChannel,
@@ -2739,6 +2834,7 @@ const ClientDetailSheet = ({
   const [activeContactId, setActiveContactId] = useState<string | null>(null);
   const popoverBoundaryRef = useRef<HTMLDivElement | null>(null);
   const chatFileInputRef = useRef<HTMLInputElement | null>(null);
+  const commItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     if (!open || !client) return;
@@ -3313,6 +3409,26 @@ const ClientDetailSheet = ({
     setClosingReason("");
   };
 
+  const handleQuickCloseCommunication = (id: string) => {
+    setCommFormOpen(true);
+    setCommHistoryOpen(true);
+    setClosingCommId(id);
+    setClosingResult(null);
+    setClosingReason("");
+
+    const scrollToItem = (attempt = 0) => {
+      const node = commItemRefs.current[id];
+      if (node) {
+        node.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      if (attempt < 6) {
+        window.setTimeout(() => scrollToItem(attempt + 1), 80);
+      }
+    };
+    window.setTimeout(() => scrollToItem(0), 50);
+  };
+
   const handleConfirmCloseCommunication = () => {
     if (!closingCommId || !closingResult) return;
     if (closingResult === "failed" && !closingReason) {
@@ -3458,6 +3574,8 @@ const ClientDetailSheet = ({
     : "bg-slate-100 text-slate-500";
   const primaryCommunicationNote = (primaryCommunication?.note || "").trim();
   const hasCommunications = Boolean(primaryCommunication);
+  const closableCommunicationId =
+    primaryCommunication?.status === "planned" ? primaryCommunication.id : null;
 
   const chatTimeline = useMemo(() => {
     // Newest -> oldest (latest on top)
@@ -3923,11 +4041,11 @@ const ClientDetailSheet = ({
                           {client.activityType}
                         </Badge>
                       )}
-                     {client.productCategory && (
-                          <Badge variant="secondary" className="text-xs">
-                            {client.productCategory}
-                          </Badge>
-                        )}
+                      {splitProductCategories(client.productCategory).map((item) => (
+                        <Badge key={item} variant="secondary" className="text-xs">
+                          {item}
+                        </Badge>
+                      ))}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
@@ -4046,6 +4164,20 @@ const ClientDetailSheet = ({
 
                 <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
                   <TabsContent value="quotes" className="mt-0 space-y-4">
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="clients-add-btn h-8 px-3 text-xs"
+                        onClick={() => {
+                          setEditingDealId(null);
+                          setDealForm(buildEmptyDealForm("quote"));
+                          setDealFormOpen(true);
+                        }}
+                      >
+                        Добавить просчет
+                      </Button>
+                    </div>
                     <div className="overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                       <div className="overflow-x-auto overflow-y-visible">
                         <table className="w-full border-collapse text-sm">
@@ -4086,7 +4218,7 @@ const ClientDetailSheet = ({
                                     <td className="px-3 py-2">
                                       <span
                                         className={cn(
-                                          "inline-flex items-center rounded-[4px] px-2 py-0.5 text-[11px] font-semibold text-white",
+                                          "inline-flex items-center whitespace-nowrap rounded-[4px] px-2 py-0.5 text-[11px] font-semibold text-white",
                                           statusTone
                                         )}
                                       >
@@ -4150,286 +4282,22 @@ const ClientDetailSheet = ({
                   </TabsContent>
 
                   <TabsContent value="deals" className="mt-0 space-y-4">
-                    <div className="flex justify-end">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="clients-add-btn h-8 px-3 text-xs"
-                        onClick={() => {
-                          setEditingDealId(null);
-                          setDealForm(buildEmptyDealForm("deal"));
-                          setDealFormOpen(true);
-                        }}
-                      >
-                        Добавить +
-                      </Button>
-                    </div>
-
-                    <Dialog
-                      open={dealFormOpen}
-                      onOpenChange={(next) => {
-                        if (!next) {
-                          handleCancelDealForm();
-                          return;
-                        }
-                        setDealFormOpen(true);
-                      }}
-                    >
-                        <DialogContent className="deal-form-dialog flex h-[92vh] w-[min(92vw,1200px)] max-w-none flex-col gap-0 overflow-hidden rounded-[18px] border border-slate-200/70 bg-slate-50 p-0">
-                          <DialogHeader className="border-b border-slate-200/70 bg-white px-5 py-3">
-                            <DialogTitle className="text-lg font-semibold">
-                              {editingDealId ? "Редактировать сделку" : "Новая сделка"}
-                            </DialogTitle>
-                            <p className="text-xs text-slate-500">
-                              Заполните основные данные, доставку и документы.
-                            </p>
-                          </DialogHeader>
-                          <div className="flex-1 overflow-hidden px-5 py-4">
-                            <div className="deal-form-grid grid h-full gap-3 lg:grid-cols-2">
-                              <div className="deal-form-section" data-tone="sky">
-                                <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide deal-form-title">
-                                  <span className="deal-form-icon">
-                                    <CalendarClock className="h-4 w-4" />
-                                  </span>
-                                  Основное
-                                </div>
-                                <div className="grid gap-3 md:grid-cols-12">
-                                  <div className="deal-form-field space-y-1.5 md:col-span-4">
-                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
-                                      Дата
-                                    </div>
-                                    <Input
-                                      type="date"
-                                      className="h-10"
-                                      value={dealForm.createdAt}
-                                      onChange={(event) =>
-                                        setDealForm((prev) => ({ ...prev, createdAt: event.target.value }))
-                                      }
-                                    />
-                                  </div>
-                                  <div className="deal-form-field space-y-1.5 md:col-span-8">
-                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
-                                      Наименование
-                                    </div>
-                                    <Input
-                                      className="h-10"
-                                      placeholder="Наименование"
-                                      value={dealForm.title}
-                                      onChange={(event) =>
-                                        setDealForm((prev) => ({ ...prev, title: event.target.value }))
-                                      }
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="deal-form-section" data-tone="emerald">
-                                <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide deal-form-title">
-                                  <span className="deal-form-icon">
-                                    <Scale className="h-4 w-4" />
-                                  </span>
-                                  Товар и сумма
-                                </div>
-                                <div className="grid gap-3 md:grid-cols-12">
-                                  <div className="deal-form-field space-y-1.5 md:col-span-6">
-                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
-                                      Ед. измерения
-                                    </div>
-                                    <Input
-                                      className="h-10"
-                                      placeholder="Ед. измерения"
-                                      value={dealForm.unit}
-                                      onChange={(event) =>
-                                        setDealForm((prev) => ({ ...prev, unit: event.target.value }))
-                                      }
-                                    />
-                                  </div>
-                                  <div className="deal-form-field space-y-1.5 md:col-span-6">
-                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
-                                      Количество
-                                    </div>
-                                    <Input
-                                      className="h-10"
-                                      placeholder="Количество"
-                                      value={dealForm.qty}
-                                      onChange={(event) =>
-                                        setDealForm((prev) => ({ ...prev, qty: event.target.value }))
-                                      }
-                                    />
-                                  </div>
-                                  <div className="deal-form-field space-y-1.5 md:col-span-6">
-                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
-                                      Цена
-                                    </div>
-                                    <Input
-                                      className="h-10"
-                                      placeholder="Цена"
-                                      value={dealForm.price}
-                                      onChange={(event) =>
-                                        setDealForm((prev) => ({ ...prev, price: event.target.value }))
-                                      }
-                                    />
-                                  </div>
-                                  <div className="deal-form-field space-y-1.5 md:col-span-6">
-                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
-                                      Сума
-                                    </div>
-                                    <Input
-                                      className="h-10"
-                                      placeholder="Сума"
-                                      value={dealForm.amount}
-                                      onChange={(event) =>
-                                        setDealForm((prev) => ({ ...prev, amount: event.target.value }))
-                                      }
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="deal-form-section" data-tone="amber">
-                                <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide deal-form-title">
-                                  <span className="deal-form-icon">
-                                    <Truck className="h-4 w-4" />
-                                  </span>
-                                  Доставка
-                                </div>
-                                <div className="grid gap-3 md:grid-cols-12">
-                                  <div className="deal-form-field space-y-1.5 md:col-span-7">
-                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
-                                      Номер декларации
-                                    </div>
-                                    <Input
-                                      className="h-10"
-                                      placeholder="Номер декларации"
-                                      value={dealForm.declarationNumber}
-                                      onChange={(event) =>
-                                        setDealForm((prev) => ({ ...prev, declarationNumber: event.target.value }))
-                                      }
-                                    />
-                                  </div>
-                                  <div className="deal-form-field space-y-1.5 md:col-span-5">
-                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
-                                      Получатель
-                                    </div>
-                                    <Input
-                                      className="h-10"
-                                      placeholder="Получатель"
-                                      value={dealForm.recipientName}
-                                      onChange={(event) =>
-                                        setDealForm((prev) => ({ ...prev, recipientName: event.target.value }))
-                                      }
-                                    />
-                                  </div>
-                                  <div className="deal-form-field space-y-1.5 md:col-span-6">
-                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
-                                      Телефон получателя
-                                    </div>
-                                    <Input
-                                      className="h-10"
-                                      placeholder="Телефон получателя"
-                                      value={dealForm.recipientPhone}
-                                      onChange={(event) =>
-                                        setDealForm((prev) => ({ ...prev, recipientPhone: event.target.value }))
-                                      }
-                                    />
-                                  </div>
-                                  <div className="deal-form-field space-y-1.5 md:col-span-6">
-                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
-                                      Город получателя
-                                    </div>
-                                    <Input
-                                      className="h-10"
-                                      placeholder="Город получателя"
-                                      value={dealForm.recipientCity}
-                                      onChange={(event) =>
-                                        setDealForm((prev) => ({ ...prev, recipientCity: event.target.value }))
-                                      }
-                                    />
-                                  </div>
-                                  <div className="deal-form-field space-y-1.5 md:col-span-12">
-                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
-                                      Отделение
-                                    </div>
-                                    <Input
-                                      className="h-10"
-                                      placeholder="Отделение"
-                                      value={dealForm.recipientOffice}
-                                      onChange={(event) =>
-                                        setDealForm((prev) => ({ ...prev, recipientOffice: event.target.value }))
-                                      }
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="deal-form-section" data-tone="slate">
-                                <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide deal-form-title">
-                                  <span className="deal-form-icon">
-                                    <FileText className="h-4 w-4" />
-                                  </span>
-                                  Документы и комментарий
-                                </div>
-                                <div className="grid gap-3 md:grid-cols-12">
-                                  <div className="deal-form-field space-y-2 md:col-span-12">
-                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
-                                      Документы
-                                    </div>
-                                    <Input
-                                      className="h-10"
-                                      placeholder="Документы (через запятую)"
-                                      value={dealForm.documents}
-                                      onChange={(event) =>
-                                        setDealForm((prev) => ({ ...prev, documents: event.target.value }))
-                                      }
-                                      onDragOver={(event) => event.preventDefault()}
-                                      onDrop={handleDealFilesDrop}
-                                    />
-                                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                                      <input
-                                        ref={dealFileInputRef}
-                                        type="file"
-                                        multiple
-                                        className="hidden"
-                                        onChange={handleDealFilesChange}
-                                      />
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        className="h-7 bg-sky-500 px-2 text-xs text-white hover:bg-sky-600"
-                                        onClick={() => dealFileInputRef.current?.click()}
-                                      >
-                                        Загрузить
-                                      </Button>
-                                      <span>Перетащите файлы сюда или нажмите кнопку</span>
-                                    </div>
-                                  </div>
-                                  <div className="deal-form-field space-y-1.5 md:col-span-12">
-                                    <div className="deal-form-label text-[11px] font-semibold text-slate-500">
-                                      Комментарий
-                                    </div>
-                                    <Input
-                                      className="h-10"
-                                      placeholder="Комментарий"
-                                      value={dealForm.comment}
-                                      onChange={(event) =>
-                                        setDealForm((prev) => ({ ...prev, comment: event.target.value }))
-                                      }
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          <DialogFooter className="border-t border-slate-200/70 bg-white px-5 py-3 sm:justify-start">
-                            <Button size="sm" onClick={handleSaveDeal}>
-                              {editingDealId ? "Сохранить" : "Добавить"}
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={handleCancelDealForm}>
-                              Отмена
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
+                    {isEditing && (
+                      <div className="flex justify-end">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="clients-add-btn h-8 px-3 text-xs"
+                          onClick={() => {
+                            setEditingDealId(null);
+                            setDealForm(buildEmptyDealForm("deal"));
+                            setDealFormOpen(true);
+                          }}
+                        >
+                          Добавить +
+                        </Button>
+                      </div>
+                    )}
 
                     <div className="overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                       <div className="overflow-x-auto overflow-y-visible">
@@ -4470,7 +4338,7 @@ const ClientDetailSheet = ({
                                   <td className="px-3 py-2">
                                     <span
                                       className={cn(
-                                        "inline-flex items-center rounded-[4px] px-2 py-0.5 text-[11px] font-semibold text-white",
+                                        "inline-flex items-center whitespace-nowrap rounded-[4px] px-2 py-0.5 text-[11px] font-semibold text-white",
                                         statusTone
                                       )}
                                     >
@@ -4525,7 +4393,276 @@ const ClientDetailSheet = ({
                     </div>
                   </TabsContent>
 
-                  <div className="overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                  <Dialog
+                    open={dealFormOpen}
+                    onOpenChange={(next) => {
+                      if (!next) {
+                        handleCancelDealForm();
+                        return;
+                      }
+                      setDealFormOpen(true);
+                    }}
+                  >
+                    <DialogContent className="deal-form-dialog flex max-h-[92vh] w-[min(94vw,1200px)] max-w-none flex-col gap-0 overflow-hidden rounded-[18px] border border-slate-200/70 bg-slate-50 p-0">
+                      <DialogHeader className="border-b border-slate-200/70 bg-white px-5 py-3">
+                        <DialogTitle className="text-lg font-semibold">
+                          {editingDealId
+                            ? dealForm.stage === "quote"
+                              ? "Редактировать просчет"
+                              : "Редактировать сделку"
+                            : dealForm.stage === "quote"
+                            ? "Новый просчет"
+                            : "Новая сделка"}
+                        </DialogTitle>
+                        <p className="text-xs text-slate-500">
+                          {dealForm.stage === "quote"
+                            ? "Заполните данные для просчета."
+                            : "Заполните основные данные, доставку и документы."}
+                        </p>
+                      </DialogHeader>
+                      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+                        <div className="deal-form-grid grid gap-3 lg:grid-cols-2">
+                          <div className="deal-form-section min-w-0 lg:col-span-2" data-tone="emerald">
+                            <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide deal-form-title">
+                              <span className="deal-form-icon">
+                                <Scale className="h-4 w-4" />
+                              </span>
+                              Товар и сумма
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-12">
+                              <div className="deal-form-field space-y-1.5 md:col-span-3">
+                                <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                  Дата
+                                </div>
+                                <Input
+                                  type="date"
+                                  className="h-10"
+                                  value={dealForm.createdAt}
+                                  onChange={(event) =>
+                                    setDealForm((prev) => ({ ...prev, createdAt: event.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="deal-form-field space-y-1.5 md:col-span-9">
+                                <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                  Наименование
+                                </div>
+                                <Input
+                                  className="h-10"
+                                  placeholder="Наименование"
+                                  value={dealForm.title}
+                                  onChange={(event) =>
+                                    setDealForm((prev) => ({ ...prev, title: event.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="deal-form-field space-y-1.5 md:col-span-6">
+                                <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                  Ед. измерения
+                                </div>
+                                <Input
+                                  className="h-10"
+                                  placeholder="Ед. измерения"
+                                  value={dealForm.unit}
+                                  onChange={(event) =>
+                                    setDealForm((prev) => ({ ...prev, unit: event.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="deal-form-field space-y-1.5 md:col-span-6">
+                                <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                  Количество
+                                </div>
+                                <Input
+                                  className="h-10"
+                                  placeholder="Количество"
+                                  value={dealForm.qty}
+                                  onChange={(event) =>
+                                    setDealForm((prev) => ({ ...prev, qty: event.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="deal-form-field space-y-1.5 md:col-span-6">
+                                <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                  Цена
+                                </div>
+                                <Input
+                                  className="h-10"
+                                  placeholder="Цена"
+                                  value={dealForm.price}
+                                  onChange={(event) =>
+                                    setDealForm((prev) => ({ ...prev, price: event.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="deal-form-field space-y-1.5 md:col-span-6">
+                                <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                  Сума
+                                </div>
+                                <Input
+                                  className="h-10"
+                                  placeholder="Сума"
+                                  value={dealForm.amount}
+                                  onChange={(event) =>
+                                    setDealForm((prev) => ({ ...prev, amount: event.target.value }))
+                                  }
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="deal-form-section min-w-0" data-tone="amber">
+                            <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide deal-form-title">
+                              <span className="deal-form-icon">
+                                <Truck className="h-4 w-4" />
+                              </span>
+                              Доставка
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-12">
+                              <div className="deal-form-field space-y-1.5 md:col-span-7">
+                                <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                  Номер декларации
+                                </div>
+                                <Input
+                                  className="h-10"
+                                  placeholder="Номер декларации"
+                                  value={dealForm.declarationNumber}
+                                  onChange={(event) =>
+                                    setDealForm((prev) => ({ ...prev, declarationNumber: event.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="deal-form-field space-y-1.5 md:col-span-5">
+                                <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                  Получатель
+                                </div>
+                                <Input
+                                  className="h-10"
+                                  placeholder="Получатель"
+                                  value={dealForm.recipientName}
+                                  onChange={(event) =>
+                                    setDealForm((prev) => ({ ...prev, recipientName: event.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="deal-form-field space-y-1.5 md:col-span-12">
+                                <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                  Телефон получателя
+                                </div>
+                                <Input
+                                  className="h-10"
+                                  placeholder="Телефон получателя"
+                                  value={dealForm.recipientPhone}
+                                  onChange={(event) =>
+                                    setDealForm((prev) => ({ ...prev, recipientPhone: event.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="deal-form-field space-y-1.5 md:col-span-6">
+                                <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                  Город получателя
+                                </div>
+                                <Input
+                                  className="h-10"
+                                  placeholder="Город получателя"
+                                  value={dealForm.recipientCity}
+                                  onChange={(event) =>
+                                    setDealForm((prev) => ({ ...prev, recipientCity: event.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="deal-form-field space-y-1.5 md:col-span-6">
+                                <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                  № отделения
+                                </div>
+                                <Input
+                                  className="h-10"
+                                  placeholder="№ отделения"
+                                  value={dealForm.recipientOffice}
+                                  onChange={(event) =>
+                                    setDealForm((prev) => ({ ...prev, recipientOffice: event.target.value }))
+                                  }
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="deal-form-section min-w-0" data-tone="slate">
+                            <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide deal-form-title">
+                              <span className="deal-form-icon">
+                                <FileText className="h-4 w-4" />
+                              </span>
+                              Документы и комментарий
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-12">
+                              <div className="deal-form-field space-y-2 md:col-span-12">
+                                <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                  Документы
+                                </div>
+                                <Input
+                                  className="h-10"
+                                  placeholder="Документы (через запятую)"
+                                  value={dealForm.documents}
+                                  onChange={(event) =>
+                                    setDealForm((prev) => ({ ...prev, documents: event.target.value }))
+                                  }
+                                  onDragOver={(event) => event.preventDefault()}
+                                  onDrop={handleDealFilesDrop}
+                                />
+                                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                                  <input
+                                    ref={dealFileInputRef}
+                                    type="file"
+                                    multiple
+                                    className="hidden"
+                                    onChange={handleDealFilesChange}
+                                  />
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="h-7 bg-sky-500 px-2 text-xs text-white hover:bg-sky-600"
+                                    onClick={() => dealFileInputRef.current?.click()}
+                                  >
+                                    Загрузить
+                                  </Button>
+                                  <span>Перетащите файлы сюда или нажмите кнопку</span>
+                                </div>
+                              </div>
+                              <div className="deal-form-field space-y-1.5 md:col-span-12">
+                                <div className="deal-form-label text-[11px] font-semibold text-slate-500">
+                                  Комментарий
+                                </div>
+                                <Input
+                                  className="h-10"
+                                  placeholder="Комментарий"
+                                  value={dealForm.comment}
+                                  onChange={(event) =>
+                                    setDealForm((prev) => ({ ...prev, comment: event.target.value }))
+                                  }
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <DialogFooter className="border-t border-slate-200/70 bg-white px-5 py-3 sm:justify-start">
+                        <Button size="sm" onClick={handleSaveDeal}>
+                          {editingDealId
+                            ? dealForm.stage === "quote"
+                              ? "Сохранить просчет"
+                              : "Сохранить"
+                            : dealForm.stage === "quote"
+                            ? "Добавить просчет"
+                            : "Добавить"}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={handleCancelDealForm}>
+                          Отмена
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  <div className="flex max-h-[50vh] min-h-[220px] flex-col overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] md:max-h-[420px]">
                     <div className="bg-slate-50/80 px-4 py-3">
                       <div className="flex items-center gap-3">
                         <button
@@ -4630,7 +4767,7 @@ const ClientDetailSheet = ({
                       )}
                     </div>
 
-                    <div className="max-h-[420px] overflow-y-auto px-4 py-4 custom-scrollbar">
+                    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 custom-scrollbar">
                       <div className="space-y-4">
                         {chatTimeline.length ? (
                           chatTimeline.map((item) => {
@@ -4646,9 +4783,9 @@ const ClientDetailSheet = ({
 
                             const authorName =
                               item.msg.authorName || client.responsibleName || currentUserName || "Менеджер";
-                            const canEdit = isDirector || item.msg.authorId === currentUserId;
-                            const canDelete =
-                              isDirector || (allowManagerDelete && item.msg.authorId === currentUserId);
+                            const isAuthor = item.msg.authorId === currentUserId;
+                            const canEdit = isDirector || isAuthor;
+                            const canDelete = isDirector || isAuthor || allowManagerDelete;
 
                             return (
                               <div key={item.id} className="group flex gap-3">
@@ -4659,7 +4796,7 @@ const ClientDetailSheet = ({
                                   <div className="flex items-center gap-2 text-[11px] text-slate-400">
                                     <span className="font-semibold text-slate-700">{authorName}</span>
                                     <span>{formatClockTime(item.msg.createdAt)}</span>
-                                    <div className="ml-auto flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                                    <div className="ml-auto flex items-center gap-1 opacity-80 transition group-hover:opacity-100">
                                       <button
                                         type="button"
                                         className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
@@ -4782,14 +4919,29 @@ const ClientDetailSheet = ({
                         Отмена
                       </Button>
                     ) : hasCommunications ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className={cn("h-7 px-3 text-xs", "clients-add-btn")}
-                        onClick={() => setCommFormOpen(true)}
-                      >
-                        Добавить
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        {closableCommunicationId && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className={cn(
+                              "h-7 px-3 text-xs",
+                              "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700"
+                            )}
+                            onClick={() => handleQuickCloseCommunication(closableCommunicationId)}
+                          >
+                            Закрыть
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className={cn("h-7 px-3 text-xs", "clients-add-btn")}
+                          onClick={() => setCommFormOpen(true)}
+                        >
+                          Добавить
+                        </Button>
+                      </div>
                     ) : null
                   }
                 >
@@ -4921,6 +5073,11 @@ const ClientDetailSheet = ({
                         </span>
                       </div>
                     </div>
+                    {closingCommId && (
+                      <div className="comm-panel rounded-[8px] px-3 py-2 text-xs text-slate-600">
+                        Выберите результат коммуникации ниже и нажмите «Сохранить».
+                      </div>
+                    )}
 
                     <Collapsible open={commHistoryOpen} onOpenChange={setCommHistoryOpen}>
                       <CollapsibleTrigger asChild>
@@ -4953,7 +5110,13 @@ const ClientDetailSheet = ({
                                 : "Завершено неудачно";
 
                               return (
-                                <div key={item.id} className="comm-history-item rounded-[10px] px-3 py-2 text-xs">
+                                <div
+                                  key={item.id}
+                                  ref={(node) => {
+                                    commItemRefs.current[item.id] = node;
+                                  }}
+                                  className="comm-history-item rounded-[10px] px-3 py-2 text-xs"
+                                >
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-2">
                                       <span className="font-semibold text-foreground">
@@ -4982,7 +5145,10 @@ const ClientDetailSheet = ({
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        className="comm-btn-outline"
+                                        className={cn(
+                                          "comm-btn-outline",
+                                          "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700"
+                                        )}
                                         onClick={() => handleStartCloseCommunication(item.id)}
                                       >
                                         Закрыть
@@ -5398,7 +5564,7 @@ const ClientDetailSheet = ({
                       <InfoRow label="Область" value={client.region || "—"} />
                       <InfoRow label="Город" value={client.city || "—"} />
                       <InfoRow label="Вид деятельности" value={client.activityType || "—"} />
-                      <InfoRow label="Продукция" value={client.productCategory || "—"} />
+                      <InfoRow label="Продукция" value={formatProductCategories(client.productCategory)} />
                       <InfoRow label="Телефон" value={client.phone || "—"} />
                       <InfoRow label="Почта" value={client.email || "—"} />
                       <InfoRow label="Сайт" value={client.website || "—"} />
