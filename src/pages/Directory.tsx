@@ -61,10 +61,17 @@ export default function Directory() {
     [directories]
   );
 
+  const parseBulkValues = (value: string) =>
+    value
+      .split(/[,\n;]+/g)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
   const handleAddItem = (key: DirectoryKey) => {
-    const value = (newValues[key] || "").trim();
-    if (!value) return;
-    addDirectoryItem(key, value);
+    const raw = newValues[key] || "";
+    const values = parseBulkValues(raw);
+    if (!values.length) return;
+    values.forEach((value) => addDirectoryItem(key, value));
     setNewValues((prev) => ({ ...prev, [key]: "" }));
   };
 
@@ -160,7 +167,7 @@ export default function Directory() {
                   <div className="flex items-center gap-2">
                     <input
                       className="ios-input text-xs"
-                      placeholder="Добавить значение..."
+                      placeholder="Добавить (через запятую)"
                       value={newValues[group.key] || ""}
                       onChange={(event) =>
                         setNewValues((prev) => ({ ...prev, [group.key]: event.target.value }))
@@ -179,4 +186,3 @@ export default function Directory() {
     </AppLayout>
   );
 }
-
