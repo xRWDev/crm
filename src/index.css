@@ -1919,6 +1919,16 @@
     box-shadow: -6px -6px 12px rgba(15, 23, 42, 0.08);
   }
 
+  .add-client-dialog .add-client-contacts {
+    padding-top: 4px;
+  }
+
+  @media (max-width: 640px) {
+    .add-client-dialog {
+      height: 94vh;
+    }
+  }
+
   .contacts-preview {
     display: flex;
     flex-direction: column;

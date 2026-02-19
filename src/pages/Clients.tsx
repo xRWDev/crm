@@ -2307,14 +2307,14 @@ const AddClientDialog = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex h-[92vh] max-h-[92vh] max-w-2xl flex-col overflow-hidden"
+        className="add-client-dialog flex h-[92vh] max-h-[92vh] w-[min(96vw,720px)] max-w-none flex-col overflow-hidden"
         onPointerDownOutside={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
       >
-        <DialogHeader>
+        <DialogHeader className="px-4 pt-4 pb-2">
           <DialogTitle>Добавить клиента</DialogTitle>
         </DialogHeader>
-        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-2 pt-2 add-client-scroll">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           <FieldWithIcon icon={User}>
             <Input
@@ -2409,7 +2409,7 @@ const AddClientDialog = ({
               onChange={(event) => setForm((prev) => ({ ...prev, activityType: event.target.value }))}
             />
           </FieldWithIcon>
-          <div className="space-y-2">
+          <div className="space-y-2 md:col-span-2">
             <div className="flex items-center gap-2">
               <FieldWithIcon icon={Package}>
                 <Input
@@ -2502,7 +2502,7 @@ const AddClientDialog = ({
             </Select>
           </FieldWithIcon>
         </div>
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 space-y-3 add-client-contacts">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <Users className="h-4 w-4 text-primary" />
@@ -2683,7 +2683,7 @@ const AddClientDialog = ({
           </div>
         </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="px-4 pb-4 pt-2">
           <Button variant="destructive" onClick={() => onOpenChange(false)}>
             Отмена
           </Button>
@@ -4266,20 +4266,12 @@ const ClientDetailSheet = ({
                                     </div>
                                     </td>
                                     <td className="px-3 py-2 text-sm">{deal.comment || "—"}</td>
-                                    <td className="px-3 py-2 text-right">
-                                      <button
-                                        type="button"
-                                        className="h-7 rounded-md border border-slate-200/70 bg-white px-3 text-[12px] font-semibold text-slate-700 transition hover:bg-slate-50"
-                                      >
-                                        Одобрить
-                                      </button>
-                                    </td>
                                   </tr>
                                 );
                               })
                             ) : (
                               <tr>
-                                <td colSpan={12} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                                <td colSpan={11} className="px-3 py-10 text-center text-sm text-muted-foreground">
                                   Просчетов пока нет.
                                 </td>
                               </tr>
