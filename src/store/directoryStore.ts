@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { UA_CITIES_RU } from "@/data/uaCitiesRu";
 
 export type DirectoryKey =
   | "activity"
@@ -25,7 +26,7 @@ type DirectoryState = {
 const DEFAULT_DIRECTORIES: Directories = {
   activity: ["Аптеки", "Банки", "Прачечные", "Розница"],
   region: ["Киевская", "Львовская", "Одесская"],
-  city: ["Киев", "Львов", "Одесса"],
+  city: [...UA_CITIES_RU],
   postal: ["Новая Почта", "Укрпочта", "DHL"],
   product: ["Канцелярия", "Одежда", "Игрушки"],
   clientType: ["Клиент", "Поставщик", "Конкурент", "Партнер"],
@@ -102,7 +103,7 @@ export const useDirectoryStore = create<DirectoryState>()(
     }),
     {
       name: "crm-directories",
-      version: 3,
+      version: 4,
       migrate: (state) => {
         if (!state || typeof state !== "object") return state as DirectoryState;
         const typedState = state as DirectoryState;

@@ -98,6 +98,7 @@ import { toast } from "@/components/ui/use-toast";
 import { useCRMStore, Client, ClientContact, Employee } from "@/store/crmStore";
 import { useAuthStore } from "@/store/authStore";
 import { useDirectoryStore } from "@/store/directoryStore";
+import { UA_CITIES_RU } from "@/data/uaCitiesRu";
 
 const CLIENT_TYPES = ["client", "supplier", "competitor", "partner"] as const;
 type ClientType = (typeof CLIENT_TYPES)[number];
@@ -304,7 +305,7 @@ const SOURCE_CHANNELS = ["Сайт", "Рекомендация", "Выставк
 const MOCK_ACTIVITIES = ["Аптеки", "Банки", "Прачечная", "HoReCa", "Строительство", "Ритейл"];
 const MOCK_PRODUCTS = ["Канцелярия", "Одежда", "Игрушки", "Медтовары", "Техника"];
 const MOCK_REGIONS = ["Киевская", "Львовская", "Одесская", "Харьковская", "Днепропетровская"];
-const MOCK_CITIES = ["Киев", "Львов", "Одесса", "Харьков", "Днепр"];
+const MOCK_CITIES = [...UA_CITIES_RU];
 const CONTACT_FIRST_NAMES = [
   "Ольга",
   "Ирина",
@@ -2155,7 +2156,19 @@ const AddClientDialog = ({
   const safeActivities = activityOptions.length ? activityOptions : MOCK_ACTIVITIES;
   const safeProducts = productOptions.length ? productOptions : MOCK_PRODUCTS;
   const safeRegions = regionOptions.length ? regionOptions : MOCK_REGIONS;
-  const safeCities = cityOptions.length ? cityOptions : MOCK_CITIES;
+  const safeCities = useMemo(() => {
+    const merged = cityOptions.length ? [...cityOptions, ...UA_CITIES_RU] : [...UA_CITIES_RU];
+    const seen = new Set<string>();
+    return merged
+      .map((item) => item?.trim())
+      .filter((item): item is string => Boolean(item))
+      .filter((item) => {
+        const key = item.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [cityOptions]);
   const directorySourceChannels = useDirectoryStore((state) => state.directories.sourceChannel);
   const sourceChannelOptions = useMemo(
     () =>
@@ -2257,20 +2270,22 @@ const AddClientDialog = ({
               ))}
             </datalist>
           </div>
-          <FieldWithIcon icon={Building2}>
-            <Select value={form.city} onValueChange={(value) => setForm((prev) => ({ ...prev, city: value }))}>
-              <SelectTrigger className="pl-10">
-                <SelectValue placeholder="Город" />
-              </SelectTrigger>
-              <SelectContent>
-                {safeCities.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FieldWithIcon>
+          <div className="space-y-1">
+            <FieldWithIcon icon={Building2}>
+              <Input
+                className="pl-10"
+                placeholder="Город"
+                value={form.city}
+                list="add-client-city-options"
+                onChange={(event) => setForm((prev) => ({ ...prev, city: event.target.value }))}
+              />
+            </FieldWithIcon>
+            <datalist id="add-client-city-options">
+              {safeCities.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+          </div>
           <FieldWithIcon icon={Briefcase}>
             <Select
               value={form.activityType}
