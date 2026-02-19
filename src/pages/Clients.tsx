@@ -2170,11 +2170,7 @@ const AddClientDialog = ({
       });
   }, [cityOptions]);
   const [cityOpen, setCityOpen] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
-  const [productOpen, setProductOpen] = useState(false);
   const cityBlurTimerRef = useRef<number | null>(null);
-  const activityBlurTimerRef = useRef<number | null>(null);
-  const productBlurTimerRef = useRef<number | null>(null);
   const filteredCities = useMemo(() => {
     const query = form.city.trim().toLowerCase();
     if (!query) return safeCities.slice(0, 12);
@@ -2184,24 +2180,6 @@ const AddClientDialog = ({
     );
     return [...startsWith, ...contains].slice(0, 12);
   }, [form.city, safeCities]);
-  const filteredActivities = useMemo(() => {
-    const query = form.activityType.trim().toLowerCase();
-    if (!query) return safeActivities.slice(0, 10);
-    const startsWith = safeActivities.filter((item) => item.toLowerCase().startsWith(query));
-    const contains = safeActivities.filter(
-      (item) => !startsWith.includes(item) && item.toLowerCase().includes(query)
-    );
-    return [...startsWith, ...contains].slice(0, 10);
-  }, [form.activityType, safeActivities]);
-  const filteredProducts = useMemo(() => {
-    const query = form.productCategory.trim().toLowerCase();
-    if (!query) return safeProducts.slice(0, 10);
-    const startsWith = safeProducts.filter((item) => item.toLowerCase().startsWith(query));
-    const contains = safeProducts.filter(
-      (item) => !startsWith.includes(item) && item.toLowerCase().includes(query)
-    );
-    return [...startsWith, ...contains].slice(0, 10);
-  }, [form.productCategory, safeProducts]);
   const directorySourceChannels = useDirectoryStore((state) => state.directories.sourceChannel);
   const addDirectoryItem = useDirectoryStore((state) => state.addDirectoryItem);
   const sourceChannelOptions = useMemo(
@@ -2271,8 +2249,6 @@ const AddClientDialog = ({
       });
       setContacts([createEmptyContact("contact-1")]);
       setCityOpen(false);
-      setActivityOpen(false);
-      setProductOpen(false);
     }
   }, [open]);
 
@@ -2368,118 +2344,22 @@ const AddClientDialog = ({
               </div>
             </PopoverContent>
           </Popover>
-          <Popover open={activityOpen} onOpenChange={setActivityOpen}>
-            <PopoverTrigger asChild>
-              <div className="space-y-1">
-                <FieldWithIcon icon={Briefcase}>
-                  <Input
-                    className="pl-10"
-                    placeholder="Вид деятельности"
-                    value={form.activityType}
-                    onFocus={() => {
-                      if (activityBlurTimerRef.current) {
-                        window.clearTimeout(activityBlurTimerRef.current);
-                        activityBlurTimerRef.current = null;
-                      }
-                      setActivityOpen(true);
-                    }}
-                    onBlur={() => {
-                      activityBlurTimerRef.current = window.setTimeout(() => {
-                        setActivityOpen(false);
-                      }, 120);
-                    }}
-                    onChange={(event) => {
-                      setForm((prev) => ({ ...prev, activityType: event.target.value }));
-                      if (!activityOpen) setActivityOpen(true);
-                    }}
-                  />
-                </FieldWithIcon>
-              </div>
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              sideOffset={6}
-              className="w-[var(--radix-popover-trigger-width)] p-1.5 shadow-[0_18px_30px_rgba(15,23,42,0.2)]"
-              onOpenAutoFocus={(event) => event.preventDefault()}
-            >
-              <div className="max-h-52 overflow-y-auto rounded-[10px] border border-slate-200/70 bg-white p-1 text-[12px] text-slate-700 custom-scrollbar">
-                {filteredActivities.length ? (
-                  filteredActivities.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      className="flex w-full items-center rounded-[8px] px-2.5 py-1.5 text-left transition hover:bg-slate-100 focus:bg-slate-100"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        setForm((prev) => ({ ...prev, activityType: item }));
-                        setActivityOpen(false);
-                      }}
-                    >
-                      {item}
-                    </button>
-                  ))
-                ) : (
-                  <div className="px-2.5 py-2 text-xs text-slate-400">Ничего не найдено</div>
-                )}
-              </div>
-            </PopoverContent>
-          </Popover>
-          <Popover open={productOpen} onOpenChange={setProductOpen}>
-            <PopoverTrigger asChild>
-              <div className="space-y-1">
-                <FieldWithIcon icon={Package}>
-                  <Input
-                    className="pl-10"
-                    placeholder="Продукция"
-                    value={form.productCategory}
-                    onFocus={() => {
-                      if (productBlurTimerRef.current) {
-                        window.clearTimeout(productBlurTimerRef.current);
-                        productBlurTimerRef.current = null;
-                      }
-                      setProductOpen(true);
-                    }}
-                    onBlur={() => {
-                      productBlurTimerRef.current = window.setTimeout(() => {
-                        setProductOpen(false);
-                      }, 120);
-                    }}
-                    onChange={(event) => {
-                      setForm((prev) => ({ ...prev, productCategory: event.target.value }));
-                      if (!productOpen) setProductOpen(true);
-                    }}
-                  />
-                </FieldWithIcon>
-              </div>
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              sideOffset={6}
-              className="w-[var(--radix-popover-trigger-width)] p-1.5 shadow-[0_18px_30px_rgba(15,23,42,0.2)]"
-              onOpenAutoFocus={(event) => event.preventDefault()}
-            >
-              <div className="max-h-52 overflow-y-auto rounded-[10px] border border-slate-200/70 bg-white p-1 text-[12px] text-slate-700 custom-scrollbar">
-                {filteredProducts.length ? (
-                  filteredProducts.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      className="flex w-full items-center rounded-[8px] px-2.5 py-1.5 text-left transition hover:bg-slate-100 focus:bg-slate-100"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        setForm((prev) => ({ ...prev, productCategory: item }));
-                        setProductOpen(false);
-                      }}
-                    >
-                      {item}
-                    </button>
-                  ))
-                ) : (
-                  <div className="px-2.5 py-2 text-xs text-slate-400">Ничего не найдено</div>
-                )}
-              </div>
-            </PopoverContent>
-          </Popover>
+          <FieldWithIcon icon={Briefcase}>
+            <Input
+              className="pl-10"
+              placeholder="Вид деятельности"
+              value={form.activityType}
+              onChange={(event) => setForm((prev) => ({ ...prev, activityType: event.target.value }))}
+            />
+          </FieldWithIcon>
+          <FieldWithIcon icon={Package}>
+            <Input
+              className="pl-10"
+              placeholder="Продукция"
+              value={form.productCategory}
+              onChange={(event) => setForm((prev) => ({ ...prev, productCategory: event.target.value }))}
+            />
+          </FieldWithIcon>
           <FieldWithIcon icon={Mail}>
             <Input
               className="pl-10"
