@@ -782,23 +782,23 @@ const initialTasks: Task[] = [
     id: 'TSK-001',
     title: 'Подготовить коммерческое предложение',
     description: 'Сформировать КП для клиента Tech Corp, учесть скидку и сроки поставки.',
-    createdAt: new Date('2026-01-22T09:00:00'),
-    dueDate: new Date('2026-01-28T18:00:00'),
+    createdAt: new Date('2026-02-15T09:00:00'),
+    dueDate: new Date('2026-02-20T18:00:00'),
     assigneeId: '2',
     creatorId: '1',
     status: 'in_progress',
     priority: 'high',
     isUrgent: true,
     comments: [
-      { id: 'task-comment-1', text: 'Нужны финальные цены от склада.', createdAt: new Date('2026-01-22T12:00:00'), authorId: '2' },
+      { id: 'task-comment-1', text: 'Нужны финальные цены от склада.', createdAt: new Date('2026-02-15T12:00:00'), authorId: '2' },
     ],
   },
   {
     id: 'TSK-002',
     title: 'Согласовать условия договора',
     description: 'Уточнить с юристом условия поставки и штрафы.',
-    createdAt: new Date('2026-01-20T11:30:00'),
-    dueDate: new Date('2026-01-24T17:00:00'),
+    createdAt: new Date('2026-02-16T11:30:00'),
+    dueDate: new Date('2026-02-21T17:00:00'),
     assigneeId: '3',
     creatorId: '1',
     status: 'open',
@@ -809,23 +809,23 @@ const initialTasks: Task[] = [
     id: 'TSK-003',
     title: 'Контроль оплаты по счету',
     description: 'Проверить оплату по счету ORD-003, напомнить клиенту.',
-    createdAt: new Date('2026-01-18T10:00:00'),
-    dueDate: new Date('2026-01-23T12:00:00'),
+    createdAt: new Date('2026-02-13T10:00:00'),
+    dueDate: new Date('2026-02-18T12:00:00'),
     assigneeId: '2',
     creatorId: '1',
     status: 'completed',
     priority: 'high',
     isUrgent: false,
-    completedAt: new Date('2026-01-23T11:15:00'),
+    completedAt: new Date('2026-02-17T11:15:00'),
     comments: [
-      { id: 'task-comment-2', text: 'Оплата подтверждена.', createdAt: new Date('2026-01-23T11:10:00'), authorId: '2' },
+      { id: 'task-comment-2', text: 'Оплата подтверждена.', createdAt: new Date('2026-02-17T11:10:00'), authorId: '2' },
     ],
   },
   {
     id: 'TSK-004',
     title: 'Подготовить отчет по сделкам',
-    description: 'Сводный отчет по всем сделкам за месяц.',
-    createdAt: new Date('2026-01-15T09:20:00'),
+    description: 'Сводный отчет по всем сделкам за период.',
+    createdAt: new Date('2026-02-12T09:20:00'),
     dueDate: null,
     assigneeId: '2',
     creatorId: '2',
@@ -837,8 +837,8 @@ const initialTasks: Task[] = [
     id: 'TSK-005',
     title: 'Запланировать встречу с клиентом',
     description: 'Договориться о встрече на следующей неделе.',
-    createdAt: new Date('2026-01-24T14:00:00'),
-    dueDate: new Date('2026-01-30T16:00:00'),
+    createdAt: new Date('2026-02-14T14:00:00'),
+    dueDate: new Date('2026-02-21T16:00:00'),
     assigneeId: '3',
     creatorId: '2',
     status: 'in_progress',
@@ -1025,6 +1025,32 @@ const initialPayments: Payment[] = [
 ];
 
 const initialClientsById = new Map(initialClients.map((client) => [client.id, client]));
+
+const PLACE_REPLACEMENTS = new Map([
+  ['Київська', 'Киевская'],
+  ['Київ', 'Киев'],
+  ['Львівська', 'Львовская'],
+  ['Львів', 'Львов'],
+  ['Одеська', 'Одесская'],
+  ['Одеса', 'Одесса'],
+  ['Харківська', 'Харьковская'],
+  ['Харків', 'Харьков'],
+  ['Дніпро', 'Днепр'],
+  ['Киевская', 'Киевская'],
+  ['Киев', 'Киев'],
+  ['Львовская', 'Львовская'],
+  ['Львов', 'Львов'],
+  ['Одесская', 'Одесская'],
+  ['Одесса', 'Одесса'],
+  ['Харьковская', 'Харьковская'],
+  ['Харьков', 'Харьков'],
+  ['Днепр', 'Днепр'],
+]);
+
+const normalizePlace = (value?: string) => {
+  if (!value) return value;
+  return PLACE_REPLACEMENTS.get(value) ?? value;
+};
 
 const fixMojibake = (value: unknown) => {
   if (typeof value !== 'string') return value;
@@ -1385,18 +1411,22 @@ export const useCRMStore = create<CRMState>()(
     }),
     {
       name: 'crm-storage',
-      version: 9,
+      version: 12,
       migrate: (state) => {
         if (!state || typeof state !== 'object') return state as CRMState;
         const typedState = state as CRMState;
         return {
           ...typedState,
           clients: initialClients,
+          tasks: initialTasks,
           orders: initialOrders,
           returns: initialReturns,
           payments: initialPayments,
           employees: Array.isArray(typedState.employees)
-            ? typedState.employees.map(fixEmployeeText).map(mergeEmployeeWithSeed)
+            ? typedState.employees
+                .map(fixEmployeeText)
+                .map(mergeEmployeeWithSeed)
+                .map((employee) => ({ ...employee, city: normalizePlace(employee.city) }))
             : typedState.employees,
         };
       },

@@ -86,7 +86,7 @@ export default function Orders() {
   }, [orders, clients, searchQuery, statusGroupFilter, scopeFilter, currentUserId, responsibleFilter]);
 
   const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+    new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'UAH' }).format(value);
 
   const formatShortDate = (value: Date) =>
     value.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -136,7 +136,8 @@ export default function Orders() {
       paymentStatus: 'pending',
       deliveryMethod: 'Standard',
       warehouseId: warehouses[0]?.id || '',
-      deliveryCost: 0
+      deliveryCost: 0,
+      managerId: currentUserId,
     });
     setIsModalOpen(true);
   };
@@ -152,9 +153,13 @@ export default function Orders() {
   const handleSaveOrder = () => {
     const validItems = (editingOrder.newItems || []).filter(item => item.productId);
     if (editingOrder.id) {
-      updateOrder(editingOrder.id, { ...editingOrder, items: validItems });
+      updateOrder(editingOrder.id, { ...editingOrder, items: validItems, managerId: editingOrder.managerId || currentUserId });
     } else {
-      addOrder({ ...editingOrder, items: validItems } as Omit<Order, 'id' | 'createdAt' | 'statusHistory'>);
+      addOrder({
+        ...editingOrder,
+        items: validItems,
+        managerId: editingOrder.managerId || currentUserId,
+      } as Omit<Order, 'id' | 'createdAt' | 'statusHistory'>);
     }
     setIsModalOpen(false);
     setEditingOrder({});
@@ -657,4 +662,3 @@ export default function Orders() {
     </AppLayout>
   );
 }
-

@@ -50,7 +50,7 @@ export default function Payments() {
   }, [payments, orders, getOrderTotal, getOrderProfit]);
 
   const formatCurrency = (value: number) => 
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+    new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'UAH' }).format(value);
 
   const methodChartData = Object.entries(stats.methodBreakdown).map(([method, amount]) => ({
     name: method,

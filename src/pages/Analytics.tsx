@@ -137,6 +137,9 @@ export default function Analytics() {
   const activeManagerIds = selectedManagers.length
     ? selectedManagers
     : availableManagers.map((m) => m.id);
+  const activeManagerIdSet = useMemo(() => new Set(activeManagerIds), [activeManagerIds]);
+  const managerIdSet = useMemo(() => new Set(managers.map((manager) => manager.id)), [managers]);
+  const includeUnassignedTasks = selectedManagers.length === 0;
 
   const [filters, setFilters] = useState<AnalyticsFilters>({
     activityType: 'all',
@@ -290,6 +293,55 @@ export default function Analytics() {
   const hasAnyReportSections = Object.values(reportAccess).some(Boolean);
 
   const managerMetrics: ManagerMetrics[] = useMemo(() => {
+    const getCommunicationTime = (item: NonNullable<typeof clients[number]["communications"]>[number]) => {
+      const dateValue =
+        item.status === 'closed'
+          ? item.closedAt ?? item.scheduledAt ?? item.createdAt
+          : item.scheduledAt ?? item.createdAt;
+      return toDate(dateValue);
+    };
+
+    const getClientCommunicationMeta = (client: typeof clients[number]) => {
+      const items = client.communications ?? [];
+      if (!items.length) {
+        return {
+          status: client.communicationStatus ?? 'none',
+          time: toDate(client.lastCommunicationAt ?? null),
+        };
+      }
+      const latest = items
+        .map((item) => {
+          const time = getCommunicationTime(item);
+          return {
+            item,
+            time: time?.getTime() ?? 0,
+            priority: item.status === 'closed' ? 1 : 0,
+          };
+        })
+        .sort((a, b) => (b.time - a.time) || (b.priority - a.priority))[0]?.item;
+
+      if (!latest) {
+        return {
+          status: client.communicationStatus ?? 'none',
+          time: toDate(client.lastCommunicationAt ?? null),
+        };
+      }
+
+      const status =
+        latest.status === 'planned'
+          ? 'in_progress'
+          : latest.result === 'success'
+          ? 'success'
+          : 'refused';
+      return { status, time: getCommunicationTime(latest) };
+    };
+
+    const getOrderManagerId = (order: typeof orders[number]) => {
+      if (order.managerId) return order.managerId;
+      const linkedClient = clientById.get(order.clientId);
+      return linkedClient?.managerId || linkedClient?.responsibleId || null;
+    };
+
     return managers.map((manager) => {
       const managerTasks = tasks.filter((task) => task.assigneeId === manager.id);
       const managerClients = clients.filter(
@@ -298,26 +350,38 @@ export default function Analytics() {
           matchesClientFilters(client)
       );
       const managerOrders = orders.filter(
-        (order) => order.managerId === manager.id && matchesOrderFilters(order)
+        (order) => getOrderManagerId(order) === manager.id && matchesOrderFilters(order)
       );
 
-      const tasksDone = managerTasks.filter((task) => task.status === 'completed' && inRange(task.completedAt || task.createdAt)).length;
-      const tasksInWork = managerTasks.filter((task) => task.status !== 'completed' && inRange(task.createdAt)).length;
+      const tasksDone = managerTasks.filter((task) => task.status === 'completed').length;
+      const tasksInWork = managerTasks.filter((task) => task.status !== 'completed').length;
 
       const clientsAdded = managerClients.filter((client) => inRange(client.createdAt)).length;
-      const communications = managerClients.filter((client) => inRange(client.lastCommunicationAt)).length;
+
+      const managerCommunications = managerClients.flatMap((client) => client.communications ?? []);
+      const closedCommunicationsInRange = managerCommunications.filter((item) => {
+        if (item.status !== 'closed') return false;
+        const dateValue = getCommunicationTime(item);
+        return inRange(dateValue);
+      });
+      const communications = closedCommunicationsInRange.length;
 
       const ordersCount = managerOrders.filter((order) => inRange(order.createdAt)).length;
 
-      const dealsSuccess = managerClients.filter(
-        (client) => client.communicationStatus === 'success' && inRange(client.lastCommunicationAt)
-      ).length;
-      const dealsRefused = managerClients.filter(
-        (client) => client.communicationStatus === 'refused' && inRange(client.lastCommunicationAt)
-      ).length;
+      const communicationStats = managerClients.reduce(
+        (acc, client) => {
+          const { status } = getClientCommunicationMeta(client);
+          if (status === 'success') acc.success += 1;
+          if (status === 'refused') acc.refused += 1;
+          return acc;
+        },
+        { success: 0, refused: 0 }
+      );
+      const dealsSuccess = communicationStats.success;
+      const dealsRefused = communicationStats.refused;
 
-      const efficiencyCalls = manager.efficiencyActual?.communications ?? 0;
-      const efficiencyOrders = manager.efficiencyActual?.orders ?? 0;
+      const efficiencyCalls = communications;
+      const efficiencyOrders = ordersCount;
 
       return {
         id: manager.id,
@@ -333,15 +397,32 @@ export default function Analytics() {
         dealsRefused,
       };
     });
-  }, [managers, tasks, clients, orders, fromDate, toDateRange, filters, clientById]);
+  }, [managers, tasks, clients, orders, filters, clientById]);
 
   const filteredManagers = managerMetrics.filter((manager) => activeManagerIds.includes(manager.id));
 
+  const taskSummary = useMemo(
+    () =>
+      tasks.reduce(
+        (acc, task) => {
+          const assigneeId = task.assigneeId;
+          const hasManager = assigneeId && managerIdSet.has(assigneeId);
+          const isIncluded = hasManager
+            ? activeManagerIdSet.has(assigneeId)
+            : includeUnassignedTasks;
+          if (!isIncluded) return acc;
+          if (task.status === 'completed') acc.tasksDone += 1;
+          else acc.tasksInWork += 1;
+          return acc;
+        },
+        { tasksDone: 0, tasksInWork: 0 }
+      ),
+    [tasks, managerIdSet, activeManagerIdSet, includeUnassignedTasks]
+  );
+
   const summary = useMemo(() => {
-    return filteredManagers.reduce(
+    const base = filteredManagers.reduce(
       (acc, manager) => {
-        acc.tasksDone += manager.tasksDone;
-        acc.tasksInWork += manager.tasksInWork;
         acc.clientsAdded += manager.clientsAdded;
         acc.communications += manager.communications;
         acc.ordersCount += manager.ordersCount;
@@ -359,7 +440,12 @@ export default function Analytics() {
         dealsRefused: 0,
       }
     );
-  }, [filteredManagers]);
+    return {
+      ...base,
+      tasksDone: taskSummary.tasksDone,
+      tasksInWork: taskSummary.tasksInWork,
+    };
+  }, [filteredManagers, taskSummary]);
 
   const metricCards = [
     {
@@ -407,11 +493,41 @@ export default function Analytics() {
     orders: manager.efficiencyOrders,
   }));
 
-  const taskChart = filteredManagers.map((manager) => ({
-    name: manager.name,
-    completed: manager.tasksDone,
-    inWork: manager.tasksInWork,
-  }));
+  const taskChart = useMemo(() => {
+    const buckets = new Map<string, { name: string; completed: number; inWork: number }>();
+    const nameById = new Map(managers.map((manager) => [manager.id, manager.name]));
+
+    managers.forEach((manager) => {
+      if (!activeManagerIdSet.has(manager.id)) return;
+      buckets.set(manager.id, { name: manager.name, completed: 0, inWork: 0 });
+    });
+
+    tasks.forEach((task) => {
+      const assigneeId = task.assigneeId;
+      const hasManager = assigneeId && managerIdSet.has(assigneeId);
+      if (hasManager) {
+        if (!activeManagerIdSet.has(assigneeId)) return;
+        const bucket = buckets.get(assigneeId) || {
+          name: nameById.get(assigneeId) ?? '—',
+          completed: 0,
+          inWork: 0,
+        };
+        if (task.status === 'completed') bucket.completed += 1;
+        else bucket.inWork += 1;
+        buckets.set(assigneeId, bucket);
+        return;
+      }
+
+      if (!includeUnassignedTasks) return;
+      const bucketId = 'unassigned';
+      const bucket = buckets.get(bucketId) || { name: 'Без ответственного', completed: 0, inWork: 0 };
+      if (task.status === 'completed') bucket.completed += 1;
+      else bucket.inWork += 1;
+      buckets.set(bucketId, bucket);
+    });
+
+    return Array.from(buckets.values());
+  }, [tasks, managers, managerIdSet, activeManagerIdSet, includeUnassignedTasks]);
 
   const clientsChart = filteredManagers.map((manager) => ({
     name: manager.name,
@@ -811,7 +927,7 @@ export default function Analytics() {
                         <span className="text-sm font-semibold text-destructive">{summary.dealsRefused}</span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Причины неудачи берутся из комментариев в карточке клиента.
+                        Берется из статуса коммуникации клиента (Успешно / Отказ).
                       </p>
                     </div>
                   </div>

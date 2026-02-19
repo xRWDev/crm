@@ -303,7 +303,7 @@ const columnLabels: Record<ColumnKey, string> = {
 const SOURCE_CHANNELS = ["Сайт", "Рекомендация", "Выставка", "Холодный звонок", "Партнер"] as const;
 const MOCK_ACTIVITIES = ["Аптеки", "Банки", "Прачечная", "HoReCa", "Строительство", "Ритейл"];
 const MOCK_PRODUCTS = ["Канцелярия", "Одежда", "Игрушки", "Медтовары", "Техника"];
-const MOCK_REGIONS = ["Киевская", "Львовская", "Одесская", "Харьковская", "Днепр"];
+const MOCK_REGIONS = ["Киевская", "Львовская", "Одесская", "Харьковская", "Днепропетровская"];
 const MOCK_CITIES = ["Киев", "Львов", "Одесса", "Харьков", "Днепр"];
 const CONTACT_FIRST_NAMES = [
   "Ольга",
@@ -2534,10 +2534,11 @@ const AddClientDialog = ({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="secondary" onClick={() => onOpenChange(false)}>
+          <Button variant="destructive" onClick={() => onOpenChange(false)}>
             Отмена
           </Button>
           <Button
+            variant="default"
             onClick={() => {
               const normalizedContacts = contacts
                 .map((contact) => ({
@@ -3748,23 +3749,16 @@ const ClientDetailSheet = ({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-44">
-        <DropdownMenuItem
-          disabled={!isEditing}
-          onClick={() => handleEditDeal(deal, context)}
-        >
+        <DropdownMenuItem onClick={() => handleEditDeal(deal, context)}>
           Редактировать
         </DropdownMenuItem>
         {context === "quote" && (
-          <DropdownMenuItem
-            disabled={!isEditing}
-            onClick={() => handleMoveDealStage(deal.id, "deal")}
-          >
+          <DropdownMenuItem onClick={() => handleMoveDealStage(deal.id, "deal")}>
             Перенести в сделку
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          disabled={!isEditing}
           onClick={() => handleDeleteDeal(deal.id)}
           className="text-rose-600 focus:text-rose-600"
         >
@@ -4096,34 +4090,31 @@ const ClientDetailSheet = ({
                   </TabsContent>
 
                   <TabsContent value="deals" className="mt-0 space-y-4">
-                    {isEditing && (
-                      <div className="flex justify-end">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="clients-add-btn h-8 px-3 text-xs"
-                          onClick={() => {
-                            setEditingDealId(null);
-                            setDealForm(buildEmptyDealForm("deal"));
-                            setDealFormOpen(true);
-                          }}
-                        >
-                          Добавить +
-                        </Button>
-                      </div>
-                    )}
-
-                    {isEditing && (
-                      <Dialog
-                        open={dealFormOpen}
-                        onOpenChange={(next) => {
-                          if (!next) {
-                            handleCancelDealForm();
-                            return;
-                          }
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="clients-add-btn h-8 px-3 text-xs"
+                        onClick={() => {
+                          setEditingDealId(null);
+                          setDealForm(buildEmptyDealForm("deal"));
                           setDealFormOpen(true);
                         }}
                       >
+                        Добавить +
+                      </Button>
+                    </div>
+
+                    <Dialog
+                      open={dealFormOpen}
+                      onOpenChange={(next) => {
+                        if (!next) {
+                          handleCancelDealForm();
+                          return;
+                        }
+                        setDealFormOpen(true);
+                      }}
+                    >
                         <DialogContent className="deal-form-dialog flex h-[92vh] w-[min(92vw,1200px)] max-w-none flex-col gap-0 overflow-hidden rounded-[18px] border border-slate-200/70 bg-slate-50 p-0">
                           <DialogHeader className="border-b border-slate-200/70 bg-white px-5 py-3">
                             <DialogTitle className="text-lg font-semibold">
@@ -4378,8 +4369,7 @@ const ClientDetailSheet = ({
                             </Button>
                           </DialogFooter>
                         </DialogContent>
-                      </Dialog>
-                    )}
+                    </Dialog>
 
                     <div className="overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                       <div className="overflow-x-auto overflow-y-visible">
@@ -4397,7 +4387,6 @@ const ClientDetailSheet = ({
                             <th className="px-3 py-2 text-left">Документы</th>
                             <th className="px-3 py-2 text-left">№ Дек, почты</th>
                             <th className="px-3 py-2 text-left">Комментарии</th>
-                            <th className="px-3 py-2 text-right"></th>
                           </tr>
                         </thead>
                         <tbody>
@@ -4460,28 +4449,6 @@ const ClientDetailSheet = ({
                                     </div>
                                   </td>
                                   <td className="px-3 py-2 text-sm">{deal.comment || "—"}</td>
-                                  <td className="px-3 py-2 text-right">
-                                    {isEditing ? (
-                                      <div className="flex items-center justify-end gap-2">
-                                        <button
-                                          type="button"
-                                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200/70 text-muted-foreground transition hover:bg-slate-50/80"
-                                          onClick={() => handleEditDeal(deal)}
-                                          aria-label="Редактировать"
-                                        >
-                                          <Pencil className="h-4 w-4" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200/70 text-rose-500 transition hover:bg-rose-50/80"
-                                          onClick={() => handleDeleteDeal(deal.id)}
-                                          aria-label="Удалить"
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </button>
-                                      </div>
-                                    ) : null}
-                                  </td>
                                 </tr>
                               );
                             })
@@ -5478,4 +5445,3 @@ const NotificationsStack = ({
 };
 
 export default ClientsPage;
-

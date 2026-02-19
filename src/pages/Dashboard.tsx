@@ -779,7 +779,7 @@ export default function Dashboard({ scope = 'manager' }: DashboardProps) {
                         <td className="font-medium text-primary">{order.id}</td>
                         <td>{client?.name || 'Unknown'}</td>
                         <td className="font-medium">
-                          {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'USD' }).format(
+                          {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'UAH' }).format(
                             getOrderTotal(order)
                           )}
                         </td>

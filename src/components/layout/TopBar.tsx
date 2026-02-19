@@ -23,8 +23,8 @@ export function TopBar({ title, subtitle }: TopBarProps) {
     email: 'dexzr@crm.com',
     role: roleLabel,
     phone: '+380123456789',
-    timezone: 'America/New_York',
-    language: 'en',
+    timezone: 'Europe/Moscow',
+    language: 'ru',
     avatarUrl: '',
     twoFactor: true,
     notifyEmail: true,
@@ -197,6 +197,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
               value={accountForm.timezone}
               onChange={(e) => updateAccountField('timezone', e.target.value)}
             >
+              <option value="Europe/Moscow">Europe/Moscow (UTC+03)</option>
               <option value="America/New_York">America/New_York (UTC-05)</option>
               <option value="America/Chicago">America/Chicago (UTC-06)</option>
               <option value="America/Denver">America/Denver (UTC-07)</option>
@@ -211,11 +212,8 @@ export function TopBar({ title, subtitle }: TopBarProps) {
               value={accountForm.language}
               onChange={(e) => updateAccountField('language', e.target.value)}
             >
-              <option value="en">English</option>
               <option value="ru">Русский</option>
-              <option value="uk">Українська</option>
-              <option value="es">Español</option>
-            </select>
+              </select>
           </div>
         </div>
 

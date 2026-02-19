@@ -30,7 +30,7 @@ export default function Delivery() {
   }), [deliveryOrders]);
 
   const formatCurrency = (value: number) => 
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+    new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'UAH' }).format(value);
 
   const handleEditDelivery = (order: Order) => {
     setSelectedOrder(order);

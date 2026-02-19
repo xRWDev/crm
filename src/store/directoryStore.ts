@@ -35,7 +35,31 @@ const DEFAULT_DIRECTORIES: Directories = {
   sourceChannel: ["Сайт", "Рекомендация", "Выставка", "Холодный звонок", "Партнер"],
 };
 
-const normalizeItem = (value: string) => value.trim().replace(/\s+/g, " ");
+const PLACE_REPLACEMENTS = new Map([
+  ["Київська", "Киевская"],
+  ["Київ", "Киев"],
+  ["Львівська", "Львовская"],
+  ["Львів", "Львов"],
+  ["Одеська", "Одесская"],
+  ["Одеса", "Одесса"],
+  ["Харківська", "Харьковская"],
+  ["Харків", "Харьков"],
+  ["Дніпро", "Днепр"],
+  ["Киевская", "Киевская"],
+  ["Киев", "Киев"],
+  ["Львовская", "Львовская"],
+  ["Львов", "Львов"],
+  ["Одесская", "Одесская"],
+  ["Одесса", "Одесса"],
+  ["Харьковская", "Харьковская"],
+  ["Харьков", "Харьков"],
+  ["Днепр", "Днепр"],
+]);
+
+const normalizeItem = (value: string) => {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  return PLACE_REPLACEMENTS.get(trimmed) ?? trimmed;
+};
 
 export const useDirectoryStore = create<DirectoryState>()(
   persist(
@@ -78,7 +102,7 @@ export const useDirectoryStore = create<DirectoryState>()(
     }),
     {
       name: "crm-directories",
-      version: 1,
+      version: 3,
       migrate: (state) => {
         if (!state || typeof state !== "object") return state as DirectoryState;
         const typedState = state as DirectoryState;
@@ -98,4 +122,3 @@ export const useDirectoryStore = create<DirectoryState>()(
     }
   )
 );
-
