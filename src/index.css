@@ -1447,15 +1447,39 @@
     box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
   }
 
-  .comm-card .comm-btn-toggle.comm-btn-success.is-active {
-    background: hsl(var(--success) / 0.18);
-    border-color: hsl(var(--success) / 0.45);
+  .comm-card .comm-btn-toggle.comm-btn-success {
+    background: hsl(var(--success) / 0.14);
+    border-color: hsl(var(--success) / 0.4);
+    color: #047857;
+  }
+
+  .comm-card .comm-btn-toggle.comm-btn-success:hover {
+    background: hsl(var(--success) / 0.22);
+    border-color: hsl(var(--success) / 0.55);
     color: #065f46;
   }
 
+  .comm-card .comm-btn-toggle.comm-btn-success.is-active {
+    background: hsl(var(--success) / 0.25);
+    border-color: hsl(var(--success) / 0.6);
+    color: #065f46;
+  }
+
+  .comm-card .comm-btn-toggle.comm-btn-danger {
+    background: hsl(var(--destructive) / 0.12);
+    border-color: hsl(var(--destructive) / 0.4);
+    color: #b91c1c;
+  }
+
+  .comm-card .comm-btn-toggle.comm-btn-danger:hover {
+    background: hsl(var(--destructive) / 0.2);
+    border-color: hsl(var(--destructive) / 0.6);
+    color: #991b1b;
+  }
+
   .comm-card .comm-btn-toggle.comm-btn-danger.is-active {
-    background: hsl(var(--destructive) / 0.14);
-    border-color: hsl(var(--destructive) / 0.45);
+    background: hsl(var(--destructive) / 0.24);
+    border-color: hsl(var(--destructive) / 0.65);
     color: #b91c1c;
   }
 

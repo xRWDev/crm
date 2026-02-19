@@ -2306,11 +2306,16 @@ const AddClientDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent
+        className="flex h-[92vh] max-h-[92vh] max-w-2xl flex-col overflow-hidden"
+        onPointerDownOutside={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>Добавить клиента</DialogTitle>
         </DialogHeader>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           <FieldWithIcon icon={User}>
             <Input
               className="pl-10"
@@ -2508,8 +2513,11 @@ const AddClientDialog = ({
               size="sm"
               className="gap-1"
               onClick={() =>
-                setContacts((prev) => [...prev, createEmptyContact()])
+                setContacts((prev) =>
+                  prev.length >= 10 ? prev : [...prev, createEmptyContact()]
+                )
               }
+              disabled={contacts.length >= 10}
             >
               <Plus className="h-4 w-4" />
               Добавить контакт
@@ -2673,6 +2681,7 @@ const AddClientDialog = ({
               </div>
             ))}
           </div>
+        </div>
         </div>
         <DialogFooter>
           <Button variant="destructive" onClick={() => onOpenChange(false)}>
