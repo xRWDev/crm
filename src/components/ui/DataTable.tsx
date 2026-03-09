@@ -15,7 +15,11 @@ interface DataTableProps<T> {
   emptyMessage?: string;
 }
 
-export function DataTable<T extends Record<string, any>>({ 
+type DataTableRow = {
+  id?: React.Key;
+} & Record<string, unknown>;
+
+export function DataTable<T extends DataTableRow>({
   data, 
   columns, 
   onRowClick,
@@ -53,7 +57,7 @@ export function DataTable<T extends Record<string, any>>({
                   <td key={column.key} className={column.className}>
                     {column.render 
                       ? column.render(item) 
-                      : item[column.key]
+                      : (item[column.key] as ReactNode)
                     }
                   </td>
                 ))}

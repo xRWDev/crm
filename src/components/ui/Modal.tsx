@@ -36,14 +36,14 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', scrollabl
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/45 backdrop-blur-[6px]"
+        className="ios-motion-overlay-static absolute inset-0 bg-black/36 backdrop-blur-[2px]"
         onClick={onClose}
       />
 
       {/* Modal */}
       <div
         className={cn(
-          "relative w-full mx-auto modal-surface crm-dialog overflow-visible rounded-[24px] shadow-2xl animate-scale-in",
+          "ios-motion-modal-static relative mx-auto w-full overflow-visible rounded-[32px] modal-surface crm-dialog shadow-2xl animate-scale-in",
           sizeClasses[size]
         )}
       >
@@ -55,11 +55,11 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', scrollabl
 
         <div className="relative">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-white/60 bg-white/70 backdrop-blur-md">
+          <div className="flex items-center justify-between rounded-t-[32px] border-b border-white/60 bg-white/70 px-6 py-4 backdrop-blur-md">
             <h2 className="text-lg font-semibold text-foreground">{title}</h2>
             <button
               onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/60 bg-white/80 text-muted-foreground shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:text-foreground"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/60 bg-white/80 text-muted-foreground shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:text-foreground"
             >
               <X className="h-4 w-4" />
             </button>

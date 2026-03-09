@@ -55,7 +55,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
 
   return (
     <>
-      <header className="sticky top-0 z-30 h-16 mx-6 mt-6 rounded-[22px] glass-panel topbar-outline">
+      <header className="sticky top-0 z-30 mx-6 mt-6 h-16 rounded-[30px] glass-panel topbar-outline">
       <div className="flex h-full items-center justify-between px-6">
         {/* Title */}
         <div className="animate-fade-in">
@@ -81,7 +81,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
           <div className="relative">
             <button
               onClick={() => setShowNotifications(!showNotifications)}
-              className="relative flex h-10 w-10 items-center justify-center rounded-xl hover:bg-muted transition-colors"
+              className="relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted transition-colors"
             >
               <Bell className="h-5 w-5 text-muted-foreground" />
               {unreadCount > 0 && (
@@ -93,7 +93,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
 
             {/* Notifications Dropdown */}
             {showNotifications && (
-              <div className="absolute right-0 top-12 w-80 glass-card rounded-2xl shadow-xl animate-scale-in overflow-hidden notification-panel">
+              <div className="absolute right-0 top-12 w-80 overflow-hidden rounded-[30px] glass-card shadow-xl animate-scale-in notification-panel">
                 <div className="px-4 py-3 border-b border-border">
                   <h3 className="font-semibold text-sm">Уведомления</h3>
                 </div>
@@ -123,7 +123,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
           {/* Profile */}
           <button
             onClick={() => setShowAccountSettings(true)}
-            className="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-muted transition-colors"
+            className="flex items-center gap-3 rounded-full px-3 py-2 hover:bg-muted transition-colors"
           >
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
               <User className="h-4 w-4" />

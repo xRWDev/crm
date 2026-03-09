@@ -514,7 +514,7 @@ export default function Employees() {
           {Icon && <Icon className="h-4 w-4 text-current/70" />}
           <span>{label}</span>
         </span>
-        <span className="ml-3 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-none bg-muted text-[11px] font-semibold text-muted-foreground">
+        <span className="ml-3 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-muted-foreground">
           {count}
         </span>
       </button>
@@ -1347,7 +1347,6 @@ export default function Employees() {
     </AppLayout>
   );
 }
-
 
 
 

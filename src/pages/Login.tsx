@@ -41,7 +41,7 @@ export default function Login() {
       <div className="absolute inset-0 crm-gradient" />
       <div className="absolute inset-0 crm-vignette" />
 
-      <div className="relative w-[min(94vw,520px)] glass-card rounded-[28px] p-8 shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
+      <div className="relative w-[min(94vw,520px)] rounded-[34px] glass-card p-8 shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
         <div className="flex items-start justify-between gap-6">
           <div>
             <p className="text-xs font-medium text-primary uppercase tracking-[0.2em]">crmPRO</p>
@@ -58,7 +58,7 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="mt-6 space-y-5">
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">Логин</label>
-            <div className="flex items-center gap-3 rounded-[18px] border border-border bg-background/40 px-4 py-2.5">
+            <div className="flex items-center gap-3 rounded-[24px] border border-border bg-background/40 px-4 py-3">
               <User className="h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
@@ -73,7 +73,7 @@ export default function Login() {
 
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">Пароль</label>
-            <div className="flex items-center gap-3 rounded-[18px] border border-border bg-background/40 px-4 py-2.5">
+            <div className="flex items-center gap-3 rounded-[24px] border border-border bg-background/40 px-4 py-3">
               <Lock className="h-4 w-4 text-muted-foreground" />
               <input
                 type="password"

@@ -162,7 +162,7 @@ export default function Documents() {
             <button
               onClick={() => setFolderFilter('all')}
               className={cn(
-                'flex items-center justify-between px-3 py-2 text-sm transition-all',
+                'flex items-center justify-between rounded-[22px] px-3 py-2 text-sm transition-all',
                 folderFilter === 'all'
                   ? 'bg-primary/10 text-primary shadow-[0_12px_26px_rgba(15,23,42,0.12)] -translate-y-[1px]'
                   : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'
@@ -176,7 +176,7 @@ export default function Documents() {
             <button
               onClick={() => setFolderFilter('shared')}
               className={cn(
-                'flex items-center justify-between px-3 py-2 text-sm transition-all',
+                'flex items-center justify-between rounded-[22px] px-3 py-2 text-sm transition-all',
                 folderFilter === 'shared'
                   ? 'bg-primary/10 text-primary shadow-[0_12px_26px_rgba(15,23,42,0.12)] -translate-y-[1px]'
                   : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'
@@ -190,7 +190,7 @@ export default function Documents() {
             <button
               onClick={() => setFolderFilter('mine')}
               className={cn(
-                'flex items-center justify-between px-3 py-2 text-sm transition-all',
+                'flex items-center justify-between rounded-[22px] px-3 py-2 text-sm transition-all',
                 folderFilter === 'mine'
                   ? 'bg-primary/10 text-primary shadow-[0_12px_26px_rgba(15,23,42,0.12)] -translate-y-[1px]'
                   : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'

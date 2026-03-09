@@ -58,26 +58,26 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
   return (
     <aside 
       className={cn(
-        "absolute left-6 top-6 bottom-6 z-40 h-auto glass-panel rounded-[26px] border border-sidebar-border transition-all duration-300 ease-out sidebar-bright",
+        "absolute bottom-6 left-6 top-6 z-40 h-auto overflow-hidden glass-panel rounded-[32px] border border-sidebar-border transition-all duration-300 ease-out sidebar-bright",
         collapsed ? "w-[72px]" : "w-[260px]"
       )}
     >
       <div className="flex h-full flex-col">
         {/* Logo */}
-        <div className="sidebar-header flex h-16 items-center justify-between px-4 border-b border-sidebar-border">
+        <div className="sidebar-header flex h-16 items-center justify-between border-b border-sidebar-border px-4">
           {!collapsed && (
             <div className="flex items-center gap-3 animate-fade-in">
               <img
                 src="/favicon.svg"
                 alt="crmPRO"
-                className="h-9 w-9 rounded-xl object-cover"
+                className="h-9 w-9 rounded-2xl object-cover"
               />
               <span className="font-semibold text-lg text-sidebar-foreground">crmPRO</span>
             </div>
           )}
           <button
             onClick={onToggleCollapsed}
-            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-sidebar-accent transition-colors"
+            className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-sidebar-accent transition-colors"
           >
             {collapsed ? (
               <ChevronRight className="h-4 w-4 text-sidebar-foreground" />
@@ -114,7 +114,7 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
                   </span>
                 )}
                 {!collapsed && item.path === '/tasks' && tasksCount > 0 && (
-                  <span className="nav-count ml-auto inline-flex h-5 w-5 items-center justify-center rounded-none text-[11px] font-semibold">
+                  <span className="nav-count ml-auto inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold">
                     {tasksCount}
                   </span>
                 )}

@@ -43,7 +43,7 @@ import {
 } from "lucide-react";
 import { addDays, format, isAfter, isBefore, isSameDay, parseISO, setHours, setMinutes } from "date-fns";
 import { ru } from "date-fns/locale";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import * as XLSX from "xlsx";
 import {
   ColumnDef,
@@ -2307,7 +2307,7 @@ const AddClientDialog = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="add-client-dialog flex h-[92vh] max-h-[92vh] w-[min(96vw,720px)] max-w-none flex-col overflow-hidden"
+        className="add-client-dialog flex h-[min(92dvh,860px)] max-h-[calc(100dvh-1.5rem)] w-[min(96vw,720px)] max-w-none flex-col overflow-hidden"
         onPointerDownOutside={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
       >
@@ -2844,6 +2844,13 @@ const ClientDetailSheet = ({
   const popoverBoundaryRef = useRef<HTMLDivElement | null>(null);
   const chatFileInputRef = useRef<HTMLInputElement | null>(null);
   const commItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const prefersReducedMotion = useReducedMotion();
+  const contactLayoutTransition = prefersReducedMotion
+    ? { duration: 0.18, ease: "easeOut" as const }
+    : { duration: 0.34, ease: [0.16, 1, 0.3, 1] as const };
+  const contactContentTransition = prefersReducedMotion
+    ? { duration: 0.16, ease: "easeOut" as const }
+    : { duration: 0.28, ease: [0.16, 1, 0.3, 1] as const };
 
   useEffect(() => {
     if (!open || !client) return;
@@ -3929,7 +3936,7 @@ const ClientDetailSheet = ({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100"
           aria-label="Действия"
         >
           <MoreVertical className="h-4 w-4" />
@@ -4147,11 +4154,11 @@ const ClientDetailSheet = ({
                 <TabsList className="grid h-auto w-full grid-cols-2 gap-3 bg-transparent p-0">
                   <TabsTrigger
                     value="quotes"
-                    className="group flex w-full items-center justify-between gap-3 rounded-[4px] border border-slate-200 bg-white px-4 py-2 text-left text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50 data-[state=active]:border-sky-500 data-[state=active]:shadow-[0_0_0_1px_rgba(14,165,233,0.2)]"
+                    className="group flex w-full items-center justify-between gap-3 rounded-[20px] border border-slate-200 bg-white px-4 py-2 text-left text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50 data-[state=active]:border-sky-500 data-[state=active]:shadow-[0_0_0_1px_rgba(14,165,233,0.2)]"
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate">Просчеты</span>
-                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-[2px] bg-slate-900 px-2 text-[11px] font-semibold leading-none text-white">
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-2 text-[11px] font-semibold leading-none text-white">
                         {quotesList.length}
                       </span>
                     </span>
@@ -4159,11 +4166,11 @@ const ClientDetailSheet = ({
                   </TabsTrigger>
                   <TabsTrigger
                     value="deals"
-                    className="group flex w-full items-center justify-between gap-3 rounded-[4px] border border-slate-200 bg-white px-4 py-2 text-left text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50 data-[state=active]:border-sky-500 data-[state=active]:shadow-[0_0_0_1px_rgba(14,165,233,0.2)]"
+                    className="group flex w-full items-center justify-between gap-3 rounded-[20px] border border-slate-200 bg-white px-4 py-2 text-left text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50 data-[state=active]:border-sky-500 data-[state=active]:shadow-[0_0_0_1px_rgba(14,165,233,0.2)]"
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate">Сделки</span>
-                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-[2px] bg-slate-900 px-2 text-[11px] font-semibold leading-none text-white">
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-2 text-[11px] font-semibold leading-none text-white">
                         {dealsList.length}
                       </span>
                     </span>
@@ -4187,7 +4194,7 @@ const ClientDetailSheet = ({
                         Добавить просчет
                       </Button>
                     </div>
-                    <div className="overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                    <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                       <div className="overflow-x-auto overflow-y-visible">
                         <table className="w-full border-collapse text-sm">
                           <thead>
@@ -4227,7 +4234,7 @@ const ClientDetailSheet = ({
                                     <td className="px-3 py-2">
                                       <span
                                         className={cn(
-                                          "inline-flex items-center whitespace-nowrap rounded-[4px] px-2 py-0.5 text-[11px] font-semibold text-white",
+                                          "inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-white",
                                           statusTone
                                         )}
                                       >
@@ -4300,7 +4307,7 @@ const ClientDetailSheet = ({
                       </div>
                     )}
 
-                    <div className="overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                    <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                       <div className="overflow-x-auto overflow-y-visible">
                         <table className="w-full border-collapse text-sm">
                         <thead>
@@ -4339,7 +4346,7 @@ const ClientDetailSheet = ({
                                   <td className="px-3 py-2">
                                     <span
                                       className={cn(
-                                        "inline-flex items-center whitespace-nowrap rounded-[4px] px-2 py-0.5 text-[11px] font-semibold text-white",
+                                        "inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-white",
                                         statusTone
                                       )}
                                     >
@@ -4663,12 +4670,12 @@ const ClientDetailSheet = ({
                     </DialogContent>
                   </Dialog>
 
-                  <div className="flex max-h-[50vh] min-h-[220px] flex-col overflow-hidden rounded-[4px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] md:max-h-[420px]">
+                  <div className="flex max-h-[50vh] min-h-[220px] flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] md:max-h-[420px]">
                     <div className="bg-slate-50/80 px-4 py-3">
                       <div className="flex items-center gap-3">
                         <button
                           type="button"
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-[8px] text-slate-500 transition hover:bg-white/80"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-[16px] text-slate-500 transition hover:bg-white/80"
                           aria-label="Прикрепить"
                           onClick={() => chatFileInputRef.current?.click()}
                         >
@@ -5157,7 +5164,7 @@ const ClientDetailSheet = ({
                                     </div>
                                   )}
                                   {closingCommId === item.id && (
-                                    <div className="mt-2 rounded-[4px] border border-slate-200 bg-white p-2">
+                                    <div className="mt-2 rounded-[18px] border border-slate-200 bg-white p-2">
                                       <div className="flex flex-wrap gap-2">
                                         <Button
                                           size="sm"
@@ -5269,9 +5276,9 @@ const ClientDetailSheet = ({
                   {responsible ? (
                     <button
                       type="button"
-                      className="flex w-full items-center gap-3 rounded-[4px] bg-slate-50 px-3 py-2 text-left transition hover:bg-slate-100"
+                      className="flex w-full items-center gap-3 rounded-[18px] bg-slate-50 px-3 py-2 text-left transition hover:bg-slate-100"
                     >
-                      <div className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200/60 bg-white text-slate-400">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-[16px] border border-slate-200/60 bg-white text-slate-400">
                         <User className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1">
@@ -5287,7 +5294,7 @@ const ClientDetailSheet = ({
                   )}
                 </InfoCard>
 
-                <InfoCard title="Контактные лица" className="animate-fade-up" bodyClassName="space-y-0">
+                <InfoCard title="Контактные лица" className="animate-fade-up" bodyClassName="space-y-2">
                   {isEditing ? (
                     <div className="space-y-3">
                       {contactList.length ? (
@@ -5355,23 +5362,33 @@ const ClientDetailSheet = ({
                       </Button>
                     </div>
                   ) : (
-                    <div className="divide-y divide-slate-200/60">
+                    <div className="space-y-2">
                       {contactList.length ? (
                         contactList.map((contact) => {
                           const isActive = contact.id === activeContactId;
                           return (
-                            <div key={contact.id} className={cn(isActive && "bg-sky-50")}>
+                            <motion.div
+                              key={contact.id}
+                              layout
+                              transition={contactLayoutTransition}
+                              className={cn(
+                                "overflow-hidden rounded-[20px] border border-slate-200/70 bg-slate-50/75 transition-all",
+                                isActive
+                                  ? "border-sky-200 bg-sky-50/70 shadow-[0_10px_24px_rgba(14,165,233,0.08)]"
+                                  : "hover:border-slate-300/80 hover:bg-white/80"
+                              )}
+                            >
                               <button
                                 type="button"
                                 className={cn(
-                                  "flex w-full items-center gap-3 px-3 py-2 text-left transition",
-                                  isActive ? "hover:bg-sky-100/60" : "hover:bg-slate-50"
+                                  "flex w-full items-center gap-3 rounded-[20px] px-3 py-3 text-left transition",
+                                  isActive ? "bg-sky-50/30 hover:bg-sky-100/50" : "hover:bg-white/70"
                                 )}
                                 onClick={() => setActiveContactId(isActive ? null : contact.id)}
                               >
                                 <div
                                   className={cn(
-                                    "flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200/60 bg-white text-slate-400",
+                                    "flex h-10 w-10 items-center justify-center rounded-[16px] border border-slate-200/60 bg-white text-slate-400 shadow-[0_1px_2px_rgba(15,23,42,0.05)]",
                                     isActive && "border-sky-500 bg-sky-500 text-white"
                                   )}
                                 >
@@ -5380,11 +5397,13 @@ const ClientDetailSheet = ({
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center justify-between gap-2">
                                     <p className="truncate text-sm font-semibold text-foreground">{contact.name}</p>
-                                    {isActive ? (
-                                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                    ) : (
-                                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                                    )}
+                                    <motion.span
+                                      animate={{ rotate: isActive ? 90 : 0, scale: isActive ? 1.02 : 1 }}
+                                      transition={contactContentTransition}
+                                      className="flex h-4 w-4 items-center justify-center text-muted-foreground"
+                                    >
+                                      <ChevronRight className="h-4 w-4" />
+                                    </motion.span>
                                   </div>
                                   <p className="truncate text-xs text-muted-foreground">
                                     {contact.position || "—"}
@@ -5392,48 +5411,81 @@ const ClientDetailSheet = ({
                                 </div>
                               </button>
 
-                              {isActive && (
-                                <div className="space-y-3 px-3 pb-3 pl-[3.75rem] text-xs">
-                                  {(contact.phones ?? []).map((phone, index) => {
-                                    const label =
-                                      index === 0
-                                        ? "Телефон (мобильный)"
-                                        : index === 1
-                                        ? "Телефон (рабочий)"
-                                        : `Телефон ${index + 1}`;
-                                    return (
-                                      <div key={`${phone}-${index}`} className="space-y-1">
-                                        <div className="text-[11px] font-semibold text-slate-400">{label}</div>
-                                        <a
-                                          href={`tel:${phone.replace(/[^\\d+]/g, "")}`}
-                                          className="text-sky-600 hover:underline"
-                                        >
-                                          {phone}
-                                        </a>
-                                      </div>
-                                    );
-                                  })}
+                              <AnimatePresence initial={false}>
+                                {isActive && (
+                                  <motion.div
+                                    key={`${contact.id}-details-shell`}
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: "auto", opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{
+                                      height: contactLayoutTransition,
+                                      opacity: {
+                                        duration: prefersReducedMotion ? 0.12 : 0.18,
+                                        ease: prefersReducedMotion ? "easeOut" : [0.16, 1, 0.3, 1],
+                                      },
+                                    }}
+                                    className="overflow-hidden"
+                                    style={{ willChange: "height, opacity" }}
+                                  >
+                                    <motion.div
+                                      initial={
+                                        prefersReducedMotion
+                                          ? { opacity: 0, y: 0 }
+                                          : { opacity: 0, y: -8, filter: "blur(12px)" }
+                                      }
+                                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                                      exit={
+                                        prefersReducedMotion
+                                          ? { opacity: 0, y: 0 }
+                                          : { opacity: 0, y: -6, filter: "blur(10px)" }
+                                      }
+                                      transition={contactContentTransition}
+                                      className="space-y-3 border-t border-slate-200/60 px-3 pb-3 pt-3 pl-[4.25rem] text-xs"
+                                      style={{ willChange: "transform, opacity, filter" }}
+                                    >
+                                      {(contact.phones ?? []).map((phone, index) => {
+                                        const label =
+                                          index === 0
+                                            ? "Телефон (мобильный)"
+                                            : index === 1
+                                            ? "Телефон (рабочий)"
+                                            : `Телефон ${index + 1}`;
+                                        return (
+                                          <div key={`${phone}-${index}`} className="space-y-1">
+                                            <div className="text-[11px] font-semibold text-slate-400">{label}</div>
+                                            <a
+                                              href={`tel:${phone.replace(/[^\\d+]/g, "")}`}
+                                              className="text-sky-600 hover:underline"
+                                            >
+                                              {phone}
+                                            </a>
+                                          </div>
+                                        );
+                                      })}
 
-                                  {(contact.emails ?? []).map((email, index) => (
-                                    <div key={`${email}-${index}`} className="space-y-1">
-                                      <div className="text-[11px] font-semibold text-slate-400">
-                                        {index === 0 ? "Почта" : `Почта ${index + 1}`}
-                                      </div>
-                                      <a href={`mailto:${email}`} className="text-sky-600 hover:underline">
-                                        {email}
-                                      </a>
-                                    </div>
-                                  ))}
-                                  {!((contact.phones ?? []).length || (contact.emails ?? []).length) && (
-                                    <p className="text-xs text-muted-foreground">Контактов нет.</p>
-                                  )}
-                                </div>
-                              )}
-                            </div>
+                                      {(contact.emails ?? []).map((email, index) => (
+                                        <div key={`${email}-${index}`} className="space-y-1">
+                                          <div className="text-[11px] font-semibold text-slate-400">
+                                            {index === 0 ? "Почта" : `Почта ${index + 1}`}
+                                          </div>
+                                          <a href={`mailto:${email}`} className="text-sky-600 hover:underline">
+                                            {email}
+                                          </a>
+                                        </div>
+                                      ))}
+                                      {!((contact.phones ?? []).length || (contact.emails ?? []).length) && (
+                                        <p className="text-xs text-muted-foreground">Контактов нет.</p>
+                                      )}
+                                    </motion.div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </motion.div>
                           );
                         })
                       ) : (
-                        <div className="px-3 py-2">
+                        <div className="rounded-[18px] border border-dashed border-slate-200/70 bg-slate-50/60 px-3 py-3">
                           <p className="text-sm text-muted-foreground">Контактов нет.</p>
                         </div>
                       )}
@@ -5599,7 +5651,7 @@ const InfoCard = ({
 }) => (
   <div
     className={cn(
-      "rounded-[4px] border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
+      "rounded-[18px] border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
       className
     )}
   >

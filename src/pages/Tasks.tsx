@@ -16,6 +16,7 @@ import {
 import { AppLayout } from '@/components/layout/AppLayout';
 import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 import { Modal } from '@/components/ui/Modal';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCRMStore, Task, TaskComment } from '@/store/crmStore';
 import { useAuthStore } from '@/store/authStore';
 import { cn } from '@/lib/utils';
@@ -143,7 +144,8 @@ export default function Tasks() {
   const [activeSidePanel, setActiveSidePanel] = useState<'summary' | 'info' | null>(null);
   const [showSummaryPeek, setShowSummaryPeek] = useState(false);
   const [infoDirty, setInfoDirty] = useState(false);
-  const summaryTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const summaryPeekShowTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const summaryPeekHideTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   useEffect(() => {
     setLeftFilter(isDirector ? 'all' : 'mine');
@@ -241,32 +243,52 @@ export default function Tasks() {
     setInfoDirty(false);
   }, [selectedTask?.id]);
 
-  const clearSummaryTimer = () => {
-    if (summaryTimerRef.current) {
-      window.clearTimeout(summaryTimerRef.current);
-      summaryTimerRef.current = null;
+  const clearSummaryPeekTimers = () => {
+    if (summaryPeekShowTimerRef.current) {
+      window.clearTimeout(summaryPeekShowTimerRef.current);
+      summaryPeekShowTimerRef.current = null;
+    }
+    if (summaryPeekHideTimerRef.current) {
+      window.clearTimeout(summaryPeekHideTimerRef.current);
+      summaryPeekHideTimerRef.current = null;
     }
   };
 
-  const triggerSummaryPeek = () => {
-    clearSummaryTimer();
-    setShowSummaryPeek(true);
-    summaryTimerRef.current = window.setTimeout(() => {
-      setShowSummaryPeek(false);
-    }, 3000);
+  const scheduleSummaryPeek = (delayMs = 1000, visibleMs = 3200) => {
+    clearSummaryPeekTimers();
+    setShowSummaryPeek(false);
+    summaryPeekShowTimerRef.current = window.setTimeout(() => {
+      summaryPeekShowTimerRef.current = null;
+      setShowSummaryPeek(true);
+      summaryPeekHideTimerRef.current = window.setTimeout(() => {
+        setShowSummaryPeek(false);
+        summaryPeekHideTimerRef.current = null;
+      }, visibleMs);
+    }, delayMs);
+  };
+
+  const handleSummaryPeekHover = () => {
+    if (!selectedTask || activeSidePanel === 'summary') return;
+    scheduleSummaryPeek(140, 2400);
   };
 
   useEffect(() => {
     if (isDetailOpen && selectedTask) {
       setActiveSidePanel(null);
       setInfoDirty(false);
-      triggerSummaryPeek();
+      scheduleSummaryPeek(1000, 3200);
       return;
     }
-    clearSummaryTimer();
+    clearSummaryPeekTimers();
     setShowSummaryPeek(false);
     setActiveSidePanel(null);
   }, [isDetailOpen, selectedTask?.id]);
+
+  useEffect(() => {
+    return () => {
+      clearSummaryPeekTimers();
+    };
+  }, []);
 
   useEffect(() => {
     if (isCommentsOpen && !selectedTask) {
@@ -342,6 +364,7 @@ export default function Tasks() {
 
   const openSidePanel = (panel: 'summary' | 'info') => {
     setActiveSidePanel((prev) => (prev === panel ? null : panel));
+    clearSummaryPeekTimers();
     setShowSummaryPeek(false);
   };
 
@@ -492,7 +515,7 @@ export default function Tasks() {
                     onClick={() => setPriorityFilter(value)}
                     aria-pressed={isActive}
                     className={cn(
-                      'rounded-none px-3 py-1.5 text-xs font-medium border transition-colors whitespace-nowrap',
+                      'rounded-full px-3 py-1.5 text-xs font-medium border transition-colors whitespace-nowrap',
                       isActive
                         ? activeStyle
                         : 'bg-muted/60 text-muted-foreground border-border hover:bg-muted'
@@ -647,17 +670,21 @@ export default function Tasks() {
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Ответственный</label>
-              <select
-                className="ios-input"
-                value={taskForm.assigneeId}
-                onChange={(event) => setTaskForm((prev) => ({ ...prev, assigneeId: event.target.value }))}
+              <Select
+                value={taskForm.assigneeId || undefined}
+                onValueChange={(value) => setTaskForm((prev) => ({ ...prev, assigneeId: value }))}
               >
-                {assignableEmployees.map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {employee.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="h-[50px] rounded-[22px] bg-background/50 px-4 text-sm">
+                  <SelectValue placeholder="Выберите сотрудника" />
+                </SelectTrigger>
+                <SelectContent>
+                  {assignableEmployees.map((employee) => (
+                    <SelectItem key={employee.id} value={employee.id}>
+                      {employee.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -671,7 +698,7 @@ export default function Tasks() {
                     onClick={() => setTaskForm((prev) => ({ ...prev, priority: value }))}
                     aria-pressed={taskForm.priority === value}
                     className={cn(
-                      'rounded-none px-3 py-1.5 text-xs font-medium border transition-colors whitespace-nowrap',
+                      'rounded-full px-3 py-1.5 text-xs font-medium border transition-colors whitespace-nowrap',
                       taskForm.priority === value
                         ? `${priorityStyles[value]} border-transparent shadow-sm`
                         : 'bg-muted/60 text-muted-foreground border-border hover:bg-muted'
@@ -687,7 +714,7 @@ export default function Tasks() {
               <button
                 onClick={() => setTaskForm((prev) => ({ ...prev, isUrgent: !prev.isUrgent }))}
                 className={cn(
-                  'rounded-none px-3 py-1.5 text-xs font-medium border transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap',
+                  'rounded-full px-3 py-1.5 text-xs font-medium border transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap',
                   taskForm.isUrgent
                     ? 'bg-red-500/10 text-red-600 border-red-500/30 shadow-sm'
                     : 'bg-muted/60 text-muted-foreground border-border hover:bg-muted'
@@ -792,7 +819,8 @@ export default function Tasks() {
               <div className={cn("task-side-dock", isDetailOpen && "is-visible")}>
                 <button
                   type="button"
-                  onMouseEnter={triggerSummaryPeek}
+                  onMouseEnter={handleSummaryPeekHover}
+                  onFocus={handleSummaryPeekHover}
                   onClick={() => openSidePanel('summary')}
                   className="task-fab task-fab--summary"
                   aria-label="Суть задачи"
@@ -865,17 +893,21 @@ export default function Tasks() {
                       <User className="h-3.5 w-3.5 text-sky-500" />
                       Ответственный
                     </label>
-                    <select
-                      className="ios-input"
-                      value={detailDraft.assigneeId}
-                      onChange={(event) => handleInfoFieldChange('assigneeId', event.target.value)}
+                    <Select
+                      value={detailDraft.assigneeId || undefined}
+                      onValueChange={(value) => handleInfoFieldChange('assigneeId', value)}
                     >
-                      {assignableEmployees.map((employee) => (
-                        <option key={employee.id} value={employee.id}>
-                          {employee.name}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger className="h-[50px] rounded-[22px] bg-background/50 px-4 text-sm">
+                        <SelectValue placeholder="Выберите сотрудника" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {assignableEmployees.map((employee) => (
+                          <SelectItem key={employee.id} value={employee.id}>
+                            {employee.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
@@ -904,19 +936,21 @@ export default function Tasks() {
                         <Sparkles className="h-3.5 w-3.5 text-sky-500" />
                         Приоритет
                       </label>
-                      <select
-                        className="ios-input"
+                      <Select
                         value={detailDraft.priority}
-                        onChange={(event) =>
-                          handleInfoFieldChange('priority', event.target.value as Task['priority'])
-                        }
+                        onValueChange={(value) => handleInfoFieldChange('priority', value as Task['priority'])}
                       >
-                        {Object.entries(priorityLabels).map(([key, label]) => (
-                          <option key={key} value={key}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger className="h-[50px] rounded-[22px] bg-background/50 px-4 text-sm">
+                          <SelectValue placeholder="Выберите приоритет" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(priorityLabels).map(([key, label]) => (
+                            <SelectItem key={key} value={key}>
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -1162,6 +1196,3 @@ export default function Tasks() {
     </AppLayout>
   );
 }
-
-
-

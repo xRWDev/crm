@@ -5,6 +5,7 @@ import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Modal } from '@/components/ui/Modal';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCRMStore, Order, OrderItem } from '@/store/crmStore';
 import { useAuthStore } from '@/store/authStore';
 import { cn } from '@/lib/utils';
@@ -41,6 +42,15 @@ const orderStatusStyles: Record<Order['status'], string> = {
   returned: 'status-returned',
   cancelled: 'status-cancelled',
 };
+
+const deliveryMethods = ['Standard', 'Express', 'Same Day', 'Pickup'] as const;
+
+const paymentStatusOptions: Array<{ value: Order['paymentStatus']; label: string }> = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'partial', label: 'Partial' },
+  { value: 'paid', label: 'Paid' },
+  { value: 'refunded', label: 'Refunded' },
+];
 
 export default function Orders() {
   const {
@@ -231,25 +241,26 @@ export default function Orders() {
                 className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
             </div>
-            <select
-              value={responsibleFilter}
-              onChange={(event) => setResponsibleFilter(event.target.value)}
-              className="ios-input text-xs"
-            >
-              <option value="all">Ответственный: все</option>
-              {employees.map((employee) => (
-                <option key={employee.id} value={employee.id}>
-                  {employee.name}
-                </option>
-              ))}
-            </select>
+            <Select value={responsibleFilter} onValueChange={setResponsibleFilter}>
+              <SelectTrigger className="h-10 min-w-[220px] rounded-full bg-background/70 px-4 text-xs">
+                <SelectValue placeholder="Ответственный: все" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Ответственный: все</SelectItem>
+                {employees.map((employee) => (
+                  <SelectItem key={employee.id} value={employee.id}>
+                    {employee.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex gap-2 flex-wrap">
             {isDirector && (
               <button
                 onClick={() => setScopeFilter('all')}
                 className={cn(
-                  'px-3 py-1.5 text-xs font-medium transition-all',
+                  'rounded-full px-3.5 py-1.5 text-xs font-medium transition-all',
                   scopeFilter === 'all'
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted text-muted-foreground hover:bg-muted/80'
@@ -261,7 +272,7 @@ export default function Orders() {
             <button
               onClick={() => setScopeFilter('mine')}
               className={cn(
-                'px-3 py-1.5 text-xs font-medium transition-all',
+                'rounded-full px-3.5 py-1.5 text-xs font-medium transition-all',
                 scopeFilter === 'mine'
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted text-muted-foreground hover:bg-muted/80'
@@ -272,7 +283,7 @@ export default function Orders() {
             <button
               onClick={() => setStatusGroupFilter('in_work')}
               className={cn(
-                'px-3 py-1.5 text-xs font-medium transition-all',
+                'rounded-full px-3.5 py-1.5 text-xs font-medium transition-all',
                 statusGroupFilter === 'in_work'
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted text-muted-foreground hover:bg-muted/80'
@@ -283,7 +294,7 @@ export default function Orders() {
             <button
               onClick={() => setStatusGroupFilter('not_completed')}
               className={cn(
-                'px-3 py-1.5 text-xs font-medium transition-all',
+                'rounded-full px-3.5 py-1.5 text-xs font-medium transition-all',
                 statusGroupFilter === 'not_completed'
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted text-muted-foreground hover:bg-muted/80'
@@ -294,7 +305,7 @@ export default function Orders() {
             <button
               onClick={() => setStatusGroupFilter('completed')}
               className={cn(
-                'px-3 py-1.5 text-xs font-medium transition-all',
+                'rounded-full px-3.5 py-1.5 text-xs font-medium transition-all',
                 statusGroupFilter === 'completed'
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted text-muted-foreground hover:bg-muted/80'
@@ -305,7 +316,7 @@ export default function Orders() {
             <button
               onClick={() => setStatusGroupFilter('all')}
               className={cn(
-                'px-3 py-1.5 text-xs font-medium transition-all',
+                'rounded-full px-3.5 py-1.5 text-xs font-medium transition-all',
                 statusGroupFilter === 'all'
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted text-muted-foreground hover:bg-muted/80'
@@ -414,28 +425,39 @@ export default function Orders() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Client *</label>
-              <select
-                className="ios-input"
-                value={editingOrder.clientId || ''}
-                onChange={(e) => setEditingOrder({ ...editingOrder, clientId: e.target.value })}
+              <Select
+                value={editingOrder.clientId || undefined}
+                onValueChange={(value) => setEditingOrder({ ...editingOrder, clientId: value })}
               >
-                <option value="">Select client</option>
-                {clients.map(client => (
-                  <option key={client.id} value={client.id}>{client.name}</option>
-                ))}
-              </select>
+                <SelectTrigger className="h-[50px] rounded-[22px] bg-background/50 px-4 text-sm">
+                  <SelectValue placeholder="Select client" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.map((client) => (
+                    <SelectItem key={client.id} value={client.id}>
+                      {client.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Warehouse *</label>
-              <select
-                className="ios-input"
-                value={editingOrder.warehouseId || ''}
-                onChange={(e) => setEditingOrder({ ...editingOrder, warehouseId: e.target.value })}
+              <Select
+                value={editingOrder.warehouseId || undefined}
+                onValueChange={(value) => setEditingOrder({ ...editingOrder, warehouseId: value })}
               >
-                {warehouses.map(wh => (
-                  <option key={wh.id} value={wh.id}>{wh.name}</option>
-                ))}
-              </select>
+                <SelectTrigger className="h-[50px] rounded-[22px] bg-background/50 px-4 text-sm">
+                  <SelectValue placeholder="Select warehouse" />
+                </SelectTrigger>
+                <SelectContent>
+                  {warehouses.map((warehouse) => (
+                    <SelectItem key={warehouse.id} value={warehouse.id}>
+                      {warehouse.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -452,16 +474,23 @@ export default function Orders() {
                 <div key={index} className="flex gap-2 items-end p-3 rounded-xl bg-muted/50">
                   <div className="flex-1">
                     <label className="text-xs text-muted-foreground">Product</label>
-                    <select
-                      className="ios-input text-sm"
-                      value={item.productId}
-                      onChange={(e) => updateOrderItem(index, 'productId', e.target.value)}
+                    <Select
+                      value={item.productId || undefined}
+                      onValueChange={(value) => updateOrderItem(index, 'productId', value)}
                     >
-                      <option value="">Select product</option>
-                      {products.filter(p => p.status === 'active').map(p => (
-                        <option key={p.id} value={p.id}>{p.name} - {formatCurrency(p.price)}</option>
-                      ))}
-                    </select>
+                      <SelectTrigger className="h-[50px] rounded-[22px] bg-background/50 px-4 text-sm">
+                        <SelectValue placeholder="Select product" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {products
+                          .filter((product) => product.status === 'active')
+                          .map((product) => (
+                            <SelectItem key={product.id} value={product.id}>
+                              {product.name} - {formatCurrency(product.price)}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="w-20">
                     <label className="text-xs text-muted-foreground">Qty</label>
@@ -508,16 +537,21 @@ export default function Orders() {
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Delivery Method</label>
-              <select
-                className="ios-input"
+              <Select
                 value={editingOrder.deliveryMethod || 'Standard'}
-                onChange={(e) => setEditingOrder({ ...editingOrder, deliveryMethod: e.target.value })}
+                onValueChange={(value) => setEditingOrder({ ...editingOrder, deliveryMethod: value })}
               >
-                <option value="Standard">Standard</option>
-                <option value="Express">Express</option>
-                <option value="Same Day">Same Day</option>
-                <option value="Pickup">Pickup</option>
-              </select>
+                <SelectTrigger className="h-[50px] rounded-[22px] bg-background/50 px-4 text-sm">
+                  <SelectValue placeholder="Delivery method" />
+                </SelectTrigger>
+                <SelectContent>
+                  {deliveryMethods.map((method) => (
+                    <SelectItem key={method} value={method}>
+                      {method}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Delivery Cost</label>
@@ -530,16 +564,23 @@ export default function Orders() {
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Payment Status</label>
-              <select
-                className="ios-input"
+              <Select
                 value={editingOrder.paymentStatus || 'pending'}
-                onChange={(e) => setEditingOrder({ ...editingOrder, paymentStatus: e.target.value as Order['paymentStatus'] })}
+                onValueChange={(value) =>
+                  setEditingOrder({ ...editingOrder, paymentStatus: value as Order['paymentStatus'] })
+                }
               >
-                <option value="pending">Pending</option>
-                <option value="partial">Partial</option>
-                <option value="paid">Paid</option>
-                <option value="refunded">Refunded</option>
-              </select>
+                <SelectTrigger className="h-[50px] rounded-[22px] bg-background/50 px-4 text-sm">
+                  <SelectValue placeholder="Payment status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentStatusOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
